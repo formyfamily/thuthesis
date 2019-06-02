@@ -1,16 +1,107 @@
 \chapter{相关工作}
 \label{cha:relatedwork}
+本章将主要对渲染算法的重要技术进行简单的介绍。
+由于研究的内容同时涉及图形处理器与部分机器学习技术，
+因此也会对这些领域的工作进行部分整理。
 
-\section{主流渲染算法}
-\subsection{基于光栅化的渲染算法}
+\section{渲染算法}
+
+正如上一章所提到的，渲染技术从提出至今已经拥有超过50余年的历史，因此已经是一门相当成熟的学科。
+
+%^ Immel, David S.; Cohen, Michael F.; Greenberg, Donald P. (1986), "A radiosity method for non-diffuse environments" (PDF), Siggraph 1986: 133, doi:10.1145/15922.15901, ISBN 978-0-89791-196-2
+%^ Kajiya, James T. (1986), "The rendering equation" (PDF), Siggraph 1986: 143–150, doi:10.1145/15922.15902, ISBN 978-0-89791-196-2
+%Watt, Alan; Watt, Mark (1992). "12.2.1 The path tracing solution to the rendering equation". Advanced Animation and Rendering Techniques: Theory and Practice. Addison-Wesley Professional. p. 293. ISBN 978-0-201-54412-1.
+%Kajiya, James T.; Von Herzen, Brian P. (1984), "Ray tracing volume densities", Siggraph 1984, 18 (3): 165, CiteSeerX 10.1.1.128.3394, doi:10.1145/964965.808594
+
+渲染技术有着完整而牢固的理论基础。
+由David Immel等人\cite{RenderingEquation1}，以及James Kajiya\cite{RenderingEquation2}在1986年同时提出的渲染方程，被认为是最著名的渲染理论之一:
+该方程利用物理方法近似描述了在几何光学模型中（不考虑光的波长效应）光照辐射度的传输形式，成为了后来大量渲染算法的理论来源。
+在1992年Alan Watt等人的工作\cite{Fredholm}中，进一步得出渲染方程是Fredholm积分中的第二类积分。
+除此之外，针对不同种类的渲染需求，许多相对应的理论也先后被提出，
+如James Kajiya等人在1984年提出过体渲染方程\cite{VolumnRenderingEquation}，为传输介质非真空情况下的体渲染提供了支持；
+Adam M Smith等人提出的短暂渲染方程\cite{TransientEquation}，用于通过渲染生成Time-Of-Flight数据的计算等等。
+
+
+写得不好{
+    在确定渲染工作的最终目标是求解渲染方程后，许多至今仍在沿用的渲染算法相继出现。
+    按照工作原理，这些算法大致可以分为基于光线追踪的渲染算法和基于光栅化的渲染算法。   
+    事实上，它们的框架早在渲染方程提出之前就都已经形成，
+    然而时至今日，这些算法几乎都以该方程作为其理论基础。
+}
+下面将对它们进行更加详细的介绍。
+
 \subsection{基于光线追踪的渲染算法}
 
-\section{图形渲染器与渲染}
-\subsection{实时光栅化渲染}
-\subsection{通用并行计算模块}
-\subsection{基于GPU的光线追踪渲染}
-这里不会详细介绍Optix，关于OpTiX的介绍见后面的文献翻译
+所谓光线追踪框架，便是通过摄像机向各个方向发射光线，并通过迭代计算
+来获得包含物体表面反射、折射的渲染结果。
+通常认为，最早提出的光线追踪算法是由Arther Appel在1968年提出的光线投射算法\cite{RayCasting}。
+事实上，该算法仅完成了光线追踪流程中的第一步，相机发射的光线在与物体相交之后便直接求得光照值。
+真正意义上的光线追踪算法，则是由Turner Whitted于1979年提出的递归式光线追踪算法\cite{WhittedRayTracing}（也被称作Whitted风格的光线追踪算法）。
+在该算法中第一次提到了次级光线的概念，及初始光线与物体表面交互后所形成的新的光线。下图是一张由递归式光线追踪算法所生成的经典图像：
 
+以上的算法已经能够支持足够复杂的场景，但是仍然存在一点明显的不足，
+即发射的光线与次级光线都有着确定的路径，因此一方面可能会带来严重的锯齿问题，
+另一方面无法实现软阴影、运动模糊等所谓“软”效果。
+为了改进这点缺陷，1984年由Robert Cook提出的分布式光线追踪算法\cite{DistributiveRayTracing}首次在光线生成上加入了不确定性，
+并引入了随机采样的机制，从而良好地解决了以上问题。
+%http://artis.inrialpes.fr/Enseignement/TRSA/CookDistributed84.pdf
+% figure 
+
+1986年，在渲染方程问世后不久，其提出者James Kajiya很快又提出了路径追踪算法\cite{PathTracing}，
+这一算法与相比之前增加了几点重要的创新：
+首先利用蒙特卡洛积分求解渲染方程的思路提出基于物体BRDF函数的采样方法；
+其次将以往路径追踪算法中存储光线的树结构变为了多条单一的路径结构。
+由于理论性的完善，路径追踪算法被认为是第一个“无偏”的光线追踪算法，
+其实际的运行效果也比以往有了巨大的提升。
+% figure
+
+路径追踪算法尽管获得足够精确的计算结果，却在收敛速度上较为缓慢。
+为了提升收敛速度，有许多针对路径追踪的优化算法被提出。其中，
+一部分算法试图从采样方式上进行优化，如Veach and J.Guibas于1995提出的符合重要性采样\cite{MultipleImportanceSampling}算法，
+通过从多个不同的分布进行联合采样的策略，来减小一些场景的误差（效果可见下图）；
+William J. Morokoff等人在1995年提出拟蒙特卡洛积分法\cite{QuasiMonteCarlo}，
+通过将利用确定性方法生成的序列代替随机数提高收敛速度，这一思路同样被运用到了路径追踪算法中；
+许多工作如（[Belcour et.al. 2013], ？？？）试图通过已有的路径来选择接下来的采样密度分布，这些算法又被统称为适应性采样。
+有的算法则直接对路径追踪生成的图片进行过滤，如[Sen and Darabi, 2011]??, [Kalantari et al. 2015]??, [Rousselle et al. 2011]??等等
+
+相比对算法中的某些步骤进行优化，另一些工作则考虑如何对算法本身做出改进。
+Lafortune在1996年提出的双向路径追踪算法\cite{BidirectionalPathTracing}便是典型的代表之一，
+其基本思路是在每轮迭代中，同时从摄像机与光源各发射并追踪一条光线，然后对两条路径上的节点两两之间分别计算光照。
+这一算法有效地降低了噪声，并使得许多在原算法中难以追踪的路径也被得到计算。
+
+对于如何处理从光源发射并追踪的光线，和双向路径追踪算法不同的另一条思路是，
+将这些光线信息直接存储在场景的物体表面上，然后通过统计一定范围内的光线的数量，
+来获取表面上任意一点实际光照强度的近似值。这类思路所主导的算法被称为光子映射算法，而上述的光线也被称为光子。
+光子映射算法最早的出现在1993年(谁的工作？)，而在此之后又受到多次改良。
+Toshiya Hachisuka等人于2008年提出的渐进式光子映射算法\cite{ProgressivePhotonMapping}，
+大大缩小了光子映射所占的内存空间和运行时间复杂度；
+仅一年之后，Toshiya Hachisuka等人又在2009年发表了随机渐进式光子映射算法\cite{StochasticProgressivePhotonMapping}，
+其相比渐进式光子映射加入了随机采样的功能，从而能够支持之前所提到的各类“软”效果。
+
+顶点链接与合并（先跳过去吧）
+
+
+
+\subsection{基于光栅化的渲染算法}
+算法理论
+Siggraph 1985 - "Fast Spheres, Shadows, Textures, Transparencies, and Image Enhancements in Pixel-Planes," Henry Fuchs,et. al.
+2000 Sig/Euro Workshop on Graphics Hardware - "Tiled Polygon Traversal Using Half-Plane Edge Functions," Joel McCormack, Robert McNamara
+Siggraph 1988 - "A Parallel Algorithm for Polygon Rasterization,"  Juan Pineda
+Siggraph 2005 - “Resolution-Independent Curve Rendering Using Programmable Graphics Hardware,” Charles Loop, Jim Blinn
+
+trick：
+阴影——环境光遮蔽
+预计算——全局光照、blabla
+体渲染计算
+
+Pbr
+
+
+\section{路径追踪渲染的并行化}
+\subsection{GPU并行计算模块}
+\subsection{GPU光线追踪库} 
+这里不会详细介绍Optix，关于OpTiX的介绍见后面的文献翻译
+More recently, CPUs and GPUs have become powerful enough to render images more quickly, causing more widespread interest in path tracing algorithms. Tim Purcell first presented a global illumination algorithm running on a GPU in 2002.[3] In February 2009 Austin Robison of Nvidia demonstrated the first commercial implementation of a path tracer running on a GPU [4], and other implementations have followed, such as that of Vladimir Koylazov in August 2009. [5] This was aided by the maturing of GPGPU programming toolkits such as CUDA and OpenCL and GPU ray tracing SDKs such as OptiX.
 \section{机器学习与渲染}
 \subsection{基于机器学习的渲染优化}
 \subsection{基于渲染的计算机视觉数据生成}
