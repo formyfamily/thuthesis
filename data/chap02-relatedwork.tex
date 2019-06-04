@@ -61,7 +61,7 @@ Adam M Smith等人提出的短暂渲染方程\cite{TransientEquation}，用于�
 通过从多个不同的分布进行联合采样的策略，来减小一些场景的误差（效果可见下图）；
 William J. Morokoff等人在1995年提出拟蒙特卡洛积分法\cite{QuasiMonteCarlo}，
 通过将利用确定性方法生成的序列代替随机数提高收敛速度，这一思路同样被运用到了路径追踪算法中；
-许多工作如（[Belcour et.al. 2013], ？？？）试图通过已有的路径来选择接下来的采样密度分布，这些算法又被统称为适应性采样。
+许多工作如（[Belcour et.al. 2013], ？？？）试图通过已有的渲染结果来选择接下来的采样密度分布，这些算法又被统称为适应性采样。
 有的算法则直接对路径追踪生成的图片进行过滤，从而起到降噪效果，这其中的工作包含有：
 TODO：[Sen and Darabi, 2011]??, [Kalantari et al. 2015]??, [Rousselle et al. 2011]??
 等等
@@ -70,6 +70,8 @@ TODO：[Sen and Darabi, 2011]??, [Kalantari et al. 2015]??, [Rousselle et al. 20
 Lafortune在1996年提出的双向路径追踪算法\cite{BidirectionalPathTracing}便是典型的代表之一，
 其基本思路是在每轮迭代中，同时从摄像机与光源各发射并追踪一条光线，然后对两条路径上的节点两两之间分别计算光照。
 这一算法有效地降低了噪声，并使得许多在原算法中难以追踪的路径也被得到计算。
+
+TODO: 梅特波利斯算法
 
 对于如何处理从光源发射并追踪的光线，和双向路径追踪算法不同的另一条思路是，
 将这些光线信息直接存储在场景的物体表面上，然后通过统计一定范围内的光线的数量，
@@ -89,10 +91,10 @@ TODO：顶点链接与合并
 对于大多数采用管线的渲染算法而言，光栅化都是不可或缺的一个关键步骤，因此这一类渲染算法也被称之为光栅化渲染。
 
 TODO：算法理论
-Siggraph 1985 - "Fast Spheres, Shadows, Textures, Transparencies, and Image Enhancements in Pixel-Planes," Henry Fuchs,et. al.
-2000 Sig/Euro Workshop on Graphics Hardware - "Tiled Polygon Traversal Using Half-Plane Edge Functions," Joel McCormack, Robert McNamara
-Siggraph 1988 - "A Parallel Algorithm for Polygon Rasterization,"  Juan Pineda
-Siggraph 2005 - “Resolution-Independent Curve Rendering Using Programmable Graphics Hardware,” Charles Loop, Jim Blinn
+%Siggraph 1985 - "Fast Spheres, Shadows, Textures, Transparencies, and Image Enhancements in Pixel-Planes," Henry Fuchs,et. al.
+%2000 Sig/Euro Workshop on Graphics Hardware - "Tiled Polygon Traversal Using Half-Plane Edge Functions," Joel McCormack, Robert McNamara
+%Siggraph 1988 - "A Parallel Algorithm for Polygon Rasterization,"  Juan Pineda
+%Siggraph 2005 - “Resolution-Independent Curve Rendering Using Programmable Graphics Hardware,” Charles Loop, Jim Blinn
 
 和光线追踪算法不同的一点是，光栅化渲染算法不仅仅针对三维场景的渲染，
 而同样可以用于二维场景、图形界面等其他需求，具有更加广泛的适应性。
@@ -160,12 +162,12 @@ TODO：OpTiX的一张示意图
 
 OpTiX的问世归功于不断走向成熟的通用图形处理器（GPGPU）。
 相比原本的GPU而言，GPGPU拥有者两点至关重要的特性：
-首先，它不存在管线编程的限制，这使得光线追踪里例如采样，计算反射光等复杂操作都能被自由地实现；
+首先，它不存在管线编程的限制，这使得光线追踪里例如采样，计算反射光等复杂操作都能被实现；
 其次，也是最为关键的一点，便是在较为成熟的GPGPU中，内核程序也拥有调用函数的能力，因此可以实现递归操作。这是光线追踪算法的核心需求所在。
 
 在此之后的时间内，利用GPU实现实时光线追踪的热度一路上涨，一些商用化的成果也慢慢呈现出来。
 AMD公司利用自己研发的GPUOpen Radeon ProRender渲染器，在自家的Vega系列GPU上启用了实时光线追踪功能\cite{Vega}；
-NVIDIA公司在新发布的GeForce 20显卡系列中，加入了名为RTX的实时光线追踪功能\cite{RTXOn}；
+NVIDIA公司在新发布的GeForce 20系列显卡中，加入了名为RTX的实时光线追踪功能\cite{RTXOn}。
 除此之外，越来越多的游戏诸如《战地5》，《我的世界》等，都已经开始实际应用起该项技术。
 
 \section{机器学习与渲染}
@@ -174,10 +176,43 @@ NVIDIA公司在新发布的GeForce 20显卡系列中，加入了名为RTX的实�
 加速了机器学习的发展，而逐渐趋向成熟的后者又反过来对渲染产生了积极影响。
 在计算机视觉领域，考虑到精确标注的现实数据往往不易取得，近年来许多算法
 利用渲染技术来生成人工数据，同样取得了良好的效果。
-下面，将对一些渲染中的机器学习算法和基于渲染的数据生成相关工作进行介绍。
+下面将对一些渲染中的机器学习算法和基于渲染的数据生成相关工作进行介绍，
+限于篇幅，以下算法均只涉及基于路径追踪的渲染。
 
 \subsection{用于渲染的机器学习算法}
 
+正如2.1.1小节中所述，对于光线追踪的渲染优化往往从两个角度进行优化：
+通过不断优化采样方式，或是对生成的图片进行后处理。
+在与机器学习相关的算法中，与采样相关的工作较少，
+其中Thomas Muller等人在2018年的工作中尝试利用神经网络生成路径追踪中的采样函数\cite{neuralImportanceSampling}，在渲染结果上取得了显著的提升。
+%https://cgl.ethz.ch/Downloads/Publications/Papers/2018/Mue18a/Mue18a.pdf
 
+相比之下，更多的工作将目光集中在图片后处理上。
+举例来说，Kalantari等人在2015年的工作中\cite{MachingLearning1}，通过机器学习算法对一个非局部均值滤波器的参数进行训练，从而达到对生成图像过滤的作用；
+Bako等人在2017年提出了一中基于机器学习的去噪器\cite{MachingLearningDenoiser}，用于过滤采样数较高的结果图像。
+同年，来自Nvidia公司的Alla Chaitanya等人利用CNN模型及Auto-Encoder模型
+构建了用于采样数较少的图像的去噪器\cite{NvidiaDenoiser}。值得一提的是，
+该模型后来也被整合进OpTiX库中，并在后来其发布的RTX实时光线追踪功能中被用于优化结果\cite{RTXDenoiser}。
 
 \subsection{基于渲染的计算机视觉数据生成}
+
+随着计算机视觉的发展，在一些领域如图像分割、图像语义以及三维重建中，获得真实图像中的精确（GroundTruth）数据往往需要通过人工标注的方式完成，
+带来了巨大的工作量。随着渲染技术的日益壮大，许多研究着力于利用渲染的过程中附带的几何信息（如位置，法向量等）对生成的渲染图像进行标注，
+从而批量生成可用的训练数据（也称合成数据）。在这些数据集中，有的通过光栅化渲染生成，有的也借助于光线追踪渲染（也被称作真实性生成数据）；
+有的专注于室内场景，而有的则主要以室外为主。
+
+对于室内场景的数据，
+主要有2014年Handa等人提出的ICL-NUIM数据集\cite{ICLNUIM}（2种房间布局，采用光栅化渲染），
+John McCormac等人于2016年提出的SceneNet数据集\cite{SceneNet}（57种布局，采用光线追踪渲染），
+Yinda Zhang等人于2017年提出的SUN CG数据集\cite{SUNCG}（45000余种布局，同时采用两种渲染），
+以及2018年由Wenbin Li等人提出的InteriorNet数据集\cite{InteriorNet}（2200000余种布局，同时采用两种渲染）等等；
+而对于室外的数据，则主要有
+2016年German Ros等人提出的SYNTHIA数据集%\cite{The SYNTHIA Dataset: A Large Collection of Synthetic Images for Semantic Segmentation of Urban Scenes}，
+Adrien Gaidon等人于2016年提出的Virtual KITTI数据集%\cite{Virtual Worlds as Proxy for Multi-Object Tracking Analysis}，
+等人提出的UnrealCV数据集%\cite{UnrealCV: Connecting computer vision to unreal engine}，
+Magnus Wrenninge等人于2018年提出的SynScape数据集%\cite{Synscapes: A Photorealistic Synthetic Dataset for Street Scene Parsing}
+等等。
+
+总体而言，随着时间向后推移，新的数据集往往有着更大的数据量，更高的图像清晰度以及渲染质量。对于数据生成者来说，
+这就对渲染器的要求也就越加苛刻。事实上，有不少的工作（如SceneNet，InteriorNet等）同样采用了GPU路径追踪渲染，
+其内容也为本文的研究提供了一定帮助。
