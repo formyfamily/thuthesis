@@ -1,12 +1,12 @@
 \chapter{相关工作}
 \label{cha:relatedwork}
 本章将主要对渲染算法的重要技术进行简单的介绍。
-由于研究的内容同时涉及图形处理器与部分机器学习技术，
+由于研究的内容同时涉及光线追踪的并行化技术与部分机器学习相关算法，
 因此也会对这些领域的工作进行部分整理。
 
 \section{渲染算法}
 
-正如上一章所提到的，渲染技术从提出至今已经拥有超过50余年的历史，因此已经是一门相当成熟的学科。
+正如上一章所提到的，渲染技术从提出至今已经拥有超过50余年的历史，已经是一门相当成熟的学科。
 
 %^ Immel, David S.; Cohen, Michael F.; Greenberg, Donald P. (1986), "A radiosity method for non-diffuse environments" (PDF), Siggraph 1986: 133, doi:10.1145/15922.15901, ISBN 978-0-89791-196-2
 %^ Kajiya, James T. (1986), "The rendering equation" (PDF), Siggraph 1986: 143–150, doi:10.1145/15922.15902, ISBN 978-0-89791-196-2
@@ -62,7 +62,9 @@ Adam M Smith等人提出的短暂渲染方程\cite{TransientEquation}，用于�
 William J. Morokoff等人在1995年提出拟蒙特卡洛积分法\cite{QuasiMonteCarlo}，
 通过将利用确定性方法生成的序列代替随机数提高收敛速度，这一思路同样被运用到了路径追踪算法中；
 许多工作如（[Belcour et.al. 2013], ？？？）试图通过已有的路径来选择接下来的采样密度分布，这些算法又被统称为适应性采样。
-有的算法则直接对路径追踪生成的图片进行过滤，如[Sen and Darabi, 2011]??, [Kalantari et al. 2015]??, [Rousselle et al. 2011]??等等
+有的算法则直接对路径追踪生成的图片进行过滤，从而起到降噪效果，这其中的工作包含有：
+TODO：[Sen and Darabi, 2011]??, [Kalantari et al. 2015]??, [Rousselle et al. 2011]??
+等等
 
 相比对算法中的某些步骤进行优化，另一些工作则考虑如何对算法本身做出改进。
 Lafortune在1996年提出的双向路径追踪算法\cite{BidirectionalPathTracing}便是典型的代表之一，
@@ -78,30 +80,104 @@ Toshiya Hachisuka等人于2008年提出的渐进式光子映射算法\cite{Progr
 仅一年之后，Toshiya Hachisuka等人又在2009年发表了随机渐进式光子映射算法\cite{StochasticProgressivePhotonMapping}，
 其相比渐进式光子映射加入了随机采样的功能，从而能够支持之前所提到的各类“软”效果。
 
-顶点链接与合并（先跳过去吧）
-
+TODO：顶点链接与合并
 
 
 \subsection{基于光栅化的渲染算法}
-算法理论
+
+按照严格定义，所谓光栅化其实是指是图形渲染管线中，将输入场景中的几何数据（又名顶点数据）转换为片元数据（从而对应到屏幕中的各个像素点）的过程。
+对于大多数采用管线的渲染算法而言，光栅化都是不可或缺的一个关键步骤，因此这一类渲染算法也被称之为光栅化渲染。
+
+TODO：算法理论
 Siggraph 1985 - "Fast Spheres, Shadows, Textures, Transparencies, and Image Enhancements in Pixel-Planes," Henry Fuchs,et. al.
 2000 Sig/Euro Workshop on Graphics Hardware - "Tiled Polygon Traversal Using Half-Plane Edge Functions," Joel McCormack, Robert McNamara
 Siggraph 1988 - "A Parallel Algorithm for Polygon Rasterization,"  Juan Pineda
 Siggraph 2005 - “Resolution-Independent Curve Rendering Using Programmable Graphics Hardware,” Charles Loop, Jim Blinn
 
-trick：
-阴影——环境光遮蔽
-预计算——全局光照、blabla
-体渲染计算
+和光线追踪算法不同的一点是，光栅化渲染算法不仅仅针对三维场景的渲染，
+而同样可以用于二维场景、图形界面等其他需求，具有更加广泛的适应性。
+除此之外，光栅化渲染由于拥有通过固定的流水线完成并行计算，
+因此速度相比前者快上许多，几乎被当前所有的实时渲染技术所采用。
+然而，光栅化算法也有自身的弱势。光栅化算法并没有在渲染中对次级光线进行跟踪，
+加之对于实时渲染而言，运行时间上有着严格限制，因此在效果上的表现一般会差于光线追踪算法。
+为了弥补这一点缺失，有许多技术试图采用近似的方法来达到更加真实的效果。
+这些技术普遍采用的思路是将复杂的光学方程进行拆分，
+把所求光照值分解成多个容易计算，或可以通过预处理得到的组成部分，再通过叠加形成最终的图像。
+下面将对一些比较典型的工作进行介绍。
 
-Pbr
+（这些与后边的论文内容关系不大，如果有时间的话再考虑添加）
+
+TODO：阴影——环境光遮蔽
+
+TODO：预计算——全局光照、blabla
+
+TODO：体渲染计算
+
+以上所述的这些工作，仅仅只是该领域中的冰山一角。
+事实上，由于来自工业界（尤其是娱乐行业为首）的需求之庞大，
+基于光栅化的渲染技术（或者实时渲染技术）在很长时间来都属于相当热门的研究课题。
+正因如此，该技术的发展速度相当迅速，与之相关的工作浩如烟海，从而也出现了不少专门对算法进行整理介绍的书籍。
+其中，较为有名的包括《Real-time Rendering》\cite{RealTimeRendering}，《Physically-Based Rendering》\cite{PhysicallyBasedRendering}(又名PBR)
+等书，都已经成为该领域中的经典之作，对目前的渲染行业产生了深刻的影响。
 
 
-\section{路径追踪渲染的并行化}
-\subsection{GPU并行计算模块}
-\subsection{GPU光线追踪库} 
-这里不会详细介绍Optix，关于OpTiX的介绍见后面的文献翻译
-More recently, CPUs and GPUs have become powerful enough to render images more quickly, causing more widespread interest in path tracing algorithms. Tim Purcell first presented a global illumination algorithm running on a GPU in 2002.[3] In February 2009 Austin Robison of Nvidia demonstrated the first commercial implementation of a path tracer running on a GPU [4], and other implementations have followed, such as that of Vladimir Koylazov in August 2009. [5] This was aided by the maturing of GPGPU programming toolkits such as CUDA and OpenCL and GPU ray tracing SDKs such as OptiX.
+\section{光线追踪渲染的并行化}
+
+自从光线追踪框架被提出以来，便有很多学者对其可并行化产生了强烈兴趣。
+按照硬件基础的不同，并行化光线追踪技术可以分为两个两种：
+第一种是基于CPU的并行技术，主要通过多CPU机器、多核CPU、网络以及分布式系统实现并行；
+第二种是基于GPU的并行技术，利用GPU的通用并行计算功能实现实现管线追踪框架。
+下面将对两种技术依次进行介绍。
+
+\subsection{基于CPU的并行化}
+
+忽略掉运行机器规模的限制，早期的CPU并行渲染技术在速度上便已经可以达到惊人的水准。
+最早被称做实时的光线追踪渲染实际早在1982年出现，由Osaka University带领的团队利用
+一台含有514个处理器的大型并行计算机LINKS-1达到了极快的渲染速度\cite{LINKS1}。这台机器规模之大,
+直到1984年仍然是世界上能力最强的计算机之一。
+
+尽管这项工作在效果上表现出色，但由于其所用的机器过于庞大，因此很难继续拓展下去。
+1986年，Mike Muuss在设计BRL-CAD时另辟蹊径，试图采用网络链接的分布式系统实现并行化，
+同样取得了良好的运行效果（速度达到了每秒一帧以上）\cite{BRLCAD}。值得一提的是，BRL-CAD本身作为一款CAD软件，至今仍在开发之中。
+
+更进一步地，人们开始期望实时光线追踪在体型普通的单台机器上运行。于是一方面，
+渲染界的学者们开始思考如何在实现上尽可能减少算法的运算量，而另一方面，
+CPU的设计者们也在不断设计更加强大的芯片与并行架构，逐渐接近光线追踪算法的运算需求。
+直至2008年，Intel公司在一次展示中，利用一款共包含16核的Xeon Tigerton系统完成了720p分辨率下的事实光线追踪，
+刷新频率甚至达到了14-29赫兹\cite{QuakeWars}。
+
+然而在此之后，随着新CPU速度的提升逐渐放缓，基于CPU的并行光线追踪技术最终也达到
+了发展瓶颈。于是，部分学者们开始将目光转移到原本用于光栅化渲染的图形处理器上，
+探求通过另一种硬件来实现这一目标的可能性。
+
+\subsection{基于GPU的并行化} 
+
+早在2002年，Tim Purcell便首次提出了通过GPU实现的全局光照算法，为后来GPU光线追踪的出现埋下了萌芽。
+2009年，来自Nvidia公司的Austin Robison展示了首个在GPU上运行的路径追踪渲染器，
+几乎同时，Nvidia公司正式向外公布了对后来影响巨大的GPU光线追踪库——OpTiX\cite{Optix}。
+
+TODO：OpTiX的一张示意图
+
+OpTiX的问世归功于不断走向成熟的通用图形处理器（GPGPU）。
+相比原本的GPU而言，GPGPU拥有者两点至关重要的特性：
+首先，它不存在管线编程的限制，这使得光线追踪里例如采样，计算反射光等复杂操作都能被自由地实现；
+其次，也是最为关键的一点，便是在较为成熟的GPGPU中，内核程序也拥有调用函数的能力，因此可以实现递归操作。这是光线追踪算法的核心需求所在。
+
+在此之后的时间内，利用GPU实现实时光线追踪的热度一路上涨，一些商用化的成果也慢慢呈现出来。
+AMD公司利用自己研发的GPUOpen Radeon ProRender渲染器，在自家的Vega系列GPU上启用了实时光线追踪功能\cite{Vega}；
+NVIDIA公司在新发布的GeForce 20显卡系列中，加入了名为RTX的实时光线追踪功能\cite{RTXOn}；
+除此之外，越来越多的游戏诸如《战地5》，《我的世界》等，都已经开始实际应用起该项技术。
+
 \section{机器学习与渲染}
-\subsection{基于机器学习的渲染优化}
+
+机器学习和渲染技术有着密不可分的联系。为渲染而诞生的图形处理器
+加速了机器学习的发展，而逐渐趋向成熟的后者又反过来对渲染产生了积极影响。
+在计算机视觉领域，考虑到精确标注的现实数据往往不易取得，近年来许多算法
+利用渲染技术来生成人工数据，同样取得了良好的效果。
+下面，将对一些渲染中的机器学习算法和基于渲染的数据生成相关工作进行介绍。
+
+\subsection{用于渲染的机器学习算法}
+
+
+
 \subsection{基于渲染的计算机视觉数据生成}
