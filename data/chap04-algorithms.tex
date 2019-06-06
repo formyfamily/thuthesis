@@ -1,18 +1,184 @@
 \chapter{基于GPU的光线追踪渲染}
 \label{cha:algorithms}
 
+上一章介绍了渲染器的整体架构以及Host程序中的各种关键类，
+在此基础上，接下来则分析如何用OpTiX中的GPU程序实现具体的渲染算法。
+本人先会对需要实现的算法原理、公式进行简单介绍，然后逐步解释算法中的各个步骤是怎样完成的。
+
 \section{路径追踪算法}
+路径追踪算法的原理即利用蒙特卡洛积分近似求解渲染方程(式2-1)。
+简单来说，当光线在场景中与物体相交时，
+我们可以按照一定的概率密度函数$p(\omega)$对次级光线的角度$\omega_i$进行采样，
+然后通过下式来近似求得该光线所得的出射光照亮度：
+\begin{equation}
+L_o(\textbf{x}, \omega_o) 
+=\frac{1}{N}\sum_{k=1}^{N}\frac{f(\omega_i)}{p(\omega_i)} 
+=\frac{1}{N}\sum_{k=1}^{N}\frac{L_i(\textbf{x}, \omega_i)f(\textbf{x}, \omega_o, \omega_i)|cos\theta_i|}{p(\omega_i)}
+\end{equation}
+其中$N$为采样个数，$L_i$为入射光照亮度，而$f$则为BRDF函数。为求方便，通常会用$\beta_i=\frac{f(\textbf{x}, \omega_o, \omega_i)|cos\theta_i|}{p(\omega_i)}$直接代表$L_o$和$L_i$之间的系数。
+对于多次散射组成的路径而言，我们只需要计算出路径中每次采样对应的$\beta$之乘积，
+然后再与路径终点处的光照强度值相乘，便可以获得路径起点处的光照强度估计值了。
+
 \subsection{算法流程}
-\subsection{光源采样}
-\subsection{路径追踪的自适应采样算法}
-\subsection{双向路径追踪（未实现）}
+
+为了方便描述，我们先将场景中的光源简化为单一点光源，其位置为$\textbf{x}_{lt}$，辐射亮度为$L_e$。
+
+在上面的公式中，一共有三个部分需要通过材质而求得：它们分别是采样值$\omega_i$、
+采样的概率密度值$p(\omega_i)$以及BRDF值$f(\textbf{x}, \omega_o, \omega_i)$。
+为此，我们对MaterialProperty添加三个相应的计算函数：Sample函数，Pdf函数和Eval函数。
+他们的输入包含经过填充的材质属性PaddingMaterialProperty，相交点的信息（位置、向量等）以及当前光线所携带的其它信息。
+
+我们首先定义OpTiX中使用的Closest Hit Program。对于光源，该函数只需要直接返回$L_e$，并终止光线即可，而一般物体的函数为：
+\begin{algorithm}
+    \SetKwInOut{KIN}{输入}
+    \SetKwInOut{KDATA}{数据}
+    \caption{Closest Hit Program for Path Tracing}
+    \KIN{相交点位置及法向量$\textbf{x},\textbf{n}$，出射光线角$\omega_o$}
+    \KDATA{系数乘积$\beta$，光照亮度$L_o$}
+
+    获取物体的材质属性$mat$(PaddingMaterialProperty)；\\
+    根据材质的种类，在保存函数ID的Buffer中取出对应的三个计算函数；\\
+    \If {$\textbf{x}$与$\textbf{x}_{lt}$之间没有其它物体遮挡} 
+    {
+        $\omega_{lt} \leftarrow \frac{\textbf{x}_{lt}-\textbf{x}}{|\textbf{x}_{lt}-\textbf{x}|}$\\
+        $L_o \leftarrow L_o+\beta\cdot L_e\cdot {\rm Eval}(mat, \textbf{n}, \omega_o, \omega_{lt}) $；
+    }
+    $\omega_i \leftarrow {\rm Sample}(mat, \textbf{n}, \omega_o)$；\\
+    $\beta \leftarrow \beta\cdot {\rm Eval}(mat, \textbf{n}, \omega_o, \omega_i)/ {\rm Pdf}(mat, \textbf{n}, \omega_o, \omega_i)$；\\
+    若当前递归深度小于最大深度，调用函数${\rm rtTrace}(\textbf{x}, \omega_i)$。   
+\end{algorithm}
+
+这里要补充一点：关于算法中的第3步，具体的实现方法是生成阴影线(Shadow Ray)并调用rtTrace对其跟踪，然后通过Any Hit Program来判断该阴影线是否被遮挡。
+
+接着是Ray Generation Program的流程。需要注意的是，由于这里要通过相机生成初始光线，
+因此需要在CameraProperty中添加一个计算函数CameraSample。
+该函数以相机参数及运行时的索引作为输入，而以光线的起点$x$、方向$\omega_o$作为输出。
+
+\begin{algorithm}
+    \SetKwInOut{KIN}{输入}
+    \SetKwInOut{KDATA}{数据}
+    \caption{Ray Generation Program for Path Tracing}
+    \KIN{索引$index_{x,y}$}
+    \KDATA{平均光照亮度$L_{acc}$，当前采样数$N$}
+
+    获取相机属性$cam$(PaddingCameraProperty)；\\
+    根据相机种类，取出对应的CameraSample函数；\\
+    $(\textbf{x}, \omega_o) \leftarrow {\rm CameraSample}(cam, index_{x,y})$；\\
+    调用函数${\rm rtTrace}(\textbf{x}, \omega_o)$，得到$L_o$；\\
+    $L_{acc} \leftarrow (L_o+L_{acc}\cdot N)/(N+1)$；\\
+    $N \leftarrow N+1$；
+\end{algorithm}
+
+至此我们已经实现了最简单的路径追踪算法，接下来的内容则是对该实现的一些改进。
+
+\subsection{光照计算}
+
+之前为了方便我们对场景中的光源提出了限定，这一节的内容则是讨论如何将这一限定去除。
+
+首先我们需要回顾一下在第二章提到过的复合重要性采样算法。
+该算法的基本思路是，在对一个函数$f$使用蒙特卡洛积分法求积分时，
+我们可以采用多种不同的采样策略（即不同的概率密度函数）进行采样，然后按照下式对所有策略的采样结果进行合并：
+\begin{equation}
+    \sum_{s=1}^{M} \sum_{i=1}^{N_s}\frac{f(X_{si})w_s(X_{si})}{p_s(X_{si})}
+\end{equation}
+其中$w_s$是一个权重函数，其值等于：
+\begin{equation}
+    w_s(x) = \frac{(N_sp_s(x))^\beta}{\sum_i(N_ip_i(x))^\beta}
+\end{equation}
+$\beta$是一个固定参数，一般设为2。利用这个方法，路径追踪算法便可以方便地渲染含有面光源的场景了：
+对于与物体相交的光线，采用两种采样策略来计算直接光照：第一种策略是按照光源的能量分布在光源表面采样，然后计算采样点向相交点传输的辐射亮度；
+第二种策略则是按照物体表面的BRDF进行次级光线的采样，然后计算光源通过次级光线向物体传输的辐射亮度。两种策略我们都只进行一次采样。
+
+对于第一种策略，我们通过对Closest Hit Program中的第3-6步进行修改来完成。
+由于要对光源进行采样，所以LightProperty需要添加LightSample函数和LightPdf函数。
+这里要注意的是，LightSample函数的采样结果是点而非方向。另外，还需要加入LightEval函数，用来求光源上某点朝某个方向输出的辐射亮度。
+具体的步骤详见算法3。
+
+\begin{algorithm}
+    \SetKwInOut{KIN}{输入}
+    \SetKwInOut{KDATA}{数据}
+    \caption{光照计算（策略一）}
+    \KIN{相交点位置及法向量$\textbf{x},\textbf{n}$，出射光线角$\omega_o$}
+    \KDATA{系数乘积$\beta$，光照亮度$L_o$}
+
+    获取光源属性$light$(PaddingLightProperty)；\\
+    根据光源的种类，取出对应的三个计算函数；\\
+    $\textbf{x}_{lt} \leftarrow {\rm LightSample}(light)$\\
+    $\omega_{lt} \leftarrow \frac{\textbf{x}_{lt}-\textbf{x}}{|\textbf{x}_{lt}-\textbf{x}|}$\\
+    $p_{lt} \leftarrow {\rm LightPdf}(light, \textbf{x}_{lt})$\\
+    $p_m \leftarrow {\rm Pdf}(mat, \textbf{n}, \omega_o, \omega_{lt})$\\
+    $w_l \leftarrow \frac{p_{lt}^2}{(p_{lt}^2+p_m^2)}$\\
+    \If {$\textbf{x}$与$\textbf{x}_{lt}$之间没有其它物体遮挡} 
+    {$L_o \leftarrow L_o+\beta\cdot(w_l/p_{lt})\cdot {\rm LightEval}(light, \textbf{x}_{lt}, \omega_{lt})\cdot {\rm Eval}(mat, \textbf{n}, \omega_o, \omega_{lt}) $；} 
+\end{algorithm}
+
+第二种策略则通过修改光源的Closest Hit Program来实现。详见算法4：
+\begin{algorithm}
+    \SetKwInOut{KIN}{输入}
+    \SetKwInOut{KDATA}{数据}
+    \caption{光照计算（策略二）}
+    \KIN{相交点位置及法向量$\textbf{x},\textbf{n}$，出射光线角$\omega_o$，上次对材质采样的概率密度值$p_m$}
+    \KDATA{系数乘积$\beta$，光照亮度$L_o$}
+
+    获取光源属性$light$(PaddingLightProperty)；\\
+    根据光源的种类，取出对应的三个计算函数；\\
+    $p_{lt} \leftarrow {\rm LightPdf}(light, \textbf{x})$\\
+    \eIf {无可用的$p_m$} 
+    {
+        $L_o \leftarrow L_o+\beta\cdot{\rm LightEval}(light, \textbf{x}_{lt}, \omega_{lt}) $
+    } 
+    {
+        $w_l \leftarrow \frac{p_m^2}{(p_{lt}^2+p_m^2)}$\\
+        $L_o \leftarrow L_o+\beta\cdot w_l\cdot {\rm LightEval}(light, \textbf{x}_{lt}, \omega_{lt}) $
+    }
+\end{algorithm}
 
 \section{随机自适应光子映射算法}
-\subsection{光子映射}
+
+光子映射算法的核心思想，是通过发射光子+区域查找来近似场景中的间接光照分布。
+由于从头开始介绍该类算法需要花费大量功夫，因此这里只对最终实现的随机自适应光子映射算法（SPPM算法）进行简单陈述。
+
+首先，我们需要对直接光照和间接光照两个概念进行精确的定义。
+在本章中，直接光照指从光源出发，只经过镜面材质（或只在第一次经过漫反射材质）从而达到相机的光照（路径表达式为$LDS^*C$或$LS^*C$），
+而间接光照则对应其余的所有光照(路径表达式为$L(S|D)^+D(S|D)^*C$)。
+对于直接光照，一般采用路径追踪算法直接求得，间接光照则通过光子进行计算。
+
+SPPM算法是一个渐进算法，因此需要进行多轮运算才能达到收敛。
+每一轮的运算又具体分为三步：
+第一步被称为光子生成（Photon Pass），由光源生成大量光子，并进行追踪直到达到一定层数为止；
+第二步将场景中的光子储存在一个按空间划分的数据结构中（例如KD树），该结构则被称为光子图（Photon Map）；
+最后一步为光子聚集（Gather Pass），即通过路径追踪算法进行渲染，并在光线遇到漫反射材质时，根据相交点周围的光子计算间接光照。
+由于第一、三步需要光线追踪功能，因此在本框架中由OpTiX完成；第二步则通过Host程序完成。
+
+\subsection{光子生成}
+
+和路径追踪一样，光子生成也需要单独实现Closest Hit和Ray Generation两个OpTiX程序。
+前者只需要将路径追踪中对应函数的直接光照计算去掉便可拿来使用，而Ray Generation程序的改动较大。
+
+实现光子生成算法还涉及到两点改动，这里需要提前进行说明。第一个是光子能量$L_{ph}$，它源自于路径追踪中
+对路径的参数$\beta$进行乘积的操作。不严谨地说，光子映射可以看作是将一条从相机到光源的路径拆成了两条分开进行计算，
+光子能量就代表了后段路径的$\beta$参数之积。第二个是用于对光源进行方向采样的计算函数LightDirSample及LightDirPdf
+在SPPM中生成光子需要用到。
+
+\begin{algorithm}
+    \SetKwInOut{KIN}{输入}
+    \SetKwInOut{KDATA}{数据}
+    \caption{Ray Generation for SPPM}
+    \KIN{索引$index_{x,y}$}
+    \KDATA{光子位置$x_{ph}$、光子能量$L_{ph}$}
+
+    获取光源属性$light$(PaddingLightProperty)；\\
+    根据光源的种类，取出对应的三个计算函数；\\
+
+\end{algorithm}
+
 \subsection{维护光子图}
 \subsection{聚集算法}
+
+\section{todo：双向路径追踪（未实现）}
+
 
 \section{图像后处理}
 \subsection{基于深度学习的图像去噪}
 \subsection{基于方差分布的图像去噪（未实现）}
-\subsection{其它优化算法}
+\subsection{基于图像分布的自适应采样算法}

@@ -61,7 +61,8 @@ GeometryInstance对象还需要绑定一个或多个Material对象，并通过In
     \item{可以进行分布式渲染}
 \end{itemize}
 
-根据这些要求，最终框架设计成了如下图所示的结构（包括控制流、数据流）：
+根据这些要求，本文在先后参考了PBRT\cite{PBRT}，及由Nvidia发布的OpTiX样例程序后，
+最终设计了如下图所示的框架结构（包括控制流、数据流）：
 
 TODO: framework control / data flow figure
 
@@ -117,8 +118,8 @@ TODO：Scene内所有结构的综合UML图
 动画属性仅仅被Host（CPU）所使用，因此不涉及任何GPU程序。
 根据这些属性的应用范围，本架构提出了三种不同的抽象类\textbf{Geometry、Property、Animator}对它们进行封装。
 其中，\textbf{Geometry}类用于几何模型；
-\textbf{Property}类用于几何外的所有属性——材质、介质、光源、摄像机；
-\textbf{Animator}类则用于属性变化。
+\textbf{Property}类用于几何外的所有静态属性——材质、介质、光源、摄像机；
+\textbf{Animator}类则用于动画属性。
 
 \subsection{几何模型——Geometry}
 TODO：Geometry的UML类图
@@ -214,27 +215,96 @@ Renderer需要维护的数据包括但不限于由它生成的Context，与渲�
 \lstset{language=C++}
 \begin{lstlisting}
 virtual void generateContext();
-virtual void uploadScene(Scene&);
+virtual void uploadScene(Scene&);hou
 virtual void resize(uint, uint);
 virtual void launch();
 \end{lstlisting}
 
-函数generateContext的功能便是是建立Context。为了让Context能够运转，在该函数中还要根据不同的渲染算法，
+generateContext函数的功能便是是建立Context。为了让Context能够运转，在该函数中还要根据不同的渲染算法，
 设定Context的全局参数、创建输入输出的Buffer、以及为Context指定Ray Generation、Exception和Miss三种程序。
 另外，该函数还会生成用于后方的两种Hit Program。
 
-函数uploadScene的主要目的是调用上述的importSceneToContext函数，但初次之外，一些需要Scene的属性（如包围盒大小）
-来决定的Renderer参数也会在这里面被设置。
+uploadScene函数的主要作用的是调用上述Scene中的importSceneToContext函数来完成场景读入，但除此之外，
+一些需要根据Scene的hui you（如包围盒大小）来决定的Renderer参数也会在这里进行设置。
 
-函数resize是为了在图形界面中，支持用户对窗口进行放缩的操作。具体内容主要包括修改相机参数、各种图像Buffer的尺寸大小等等。
+resize函数用来修改渲染器的尺寸，在图形界面中支持用户对窗口进行放缩的操作。
+具体内容主要包括修改相机参数、各种图像Buffer的尺寸大小等等。
 
-最后也是最为重要的函数launch，其功能便是用OpTiX完成一轮渲染。
+最后也是最为重要的是函数launch，其功能便是用OpTiX完成一轮渲染。
 在这个函数中，将会一次或多次调用Context的launch接口，启动OpTiX的GPU渲染程序。
-在下一章GPU光线追踪渲染算法的介绍中，会对这个函数内部的实现进行更细致的说明。
+在下一章GPU光线追踪渲染算法的介绍中，对这个函数内部的实现会展开更细致的说明。
 
 \section{图像后处理——PostProcessor}
 
+TODO：PostProcessor
+
+PostProcessor负责将Renderer的输出图形进行后处理，然后再将一些信息反馈回Renderer。
+他的构造非常简单，由一个输入Buffer，一个输出Buffer，以及所有的辅助数据（包括反馈、由渲染器提供的其他信息）组成。
+它需要实现三个接口函数：
+
+\lstset{language=C++}
+\begin{lstlisting}
+virtual void setupWithContext(Context&);
+virtual void resize(uint, uint);
+virtual void process(Context&);
+\end{lstlisting}
+
+简单来说，setupWithContext函数负责初始化处理器，resize函数和之前一样用于修改尺寸，
+而process函数便是完成一次后处理操作。用户创建一个后处理器后，首先要手动制定其输入Buffer，然后通过初始化
+便会自动生成输出Buffer和其它的辅助数据。这些数据可以作为最终输出，可以接回Renderer，也可以再接到后续的后处理器上。
+
+另外需要注意的是，对于有反馈的后处理算法而言，Renderer也需要做出相应的修改以提供支持。
+一种比较合理的解决方法是采用Decorator设计模式，通过对Renderer提供修饰来达到这一目标。
+但由于渲染算法的修改通常都需要.深入到OpTiX的内核程序中去，因此在这个过程中有许多代码是不可避免地需要重写的。
 
 
 \section{图形界面——GUI}
 
+TODO：GUI UML图
+
+GUI类是整个流程当中的最后一个被创建的模块，负责与用户之间的一切交互。
+它主要需要完成三个功能：运行完整的渲染流程、现实结果、以及允许用户进行修改。
+
+GUI类拥有一个Scene的指针，一个Renderer的指针
+以及一个由PostProcess的指针组成的数组。这三者包含了有关渲染的全部信息。
+它的主要接口函数有两个：
+\lstset{language=C++}
+\begin{lstlisting}
+void initialize();
+void run();
+\end{lstlisting}
+
+用户首先需要调用initialization函数初始化GUI（主要是初始化其底层支持的库如glfw等），
+然后将生成的Scene、Renderer等其他模块逐个输入进GUI中，
+最后调用run函数开始循环。
+
+GUI类的具体实现是基于Dear ImGui图形界面库\cite{Imgui}（以下称为ImGui）完成的。该界面库拥有扩展性强，简单轻便的特点，
+因此很方便用来实现用户的交互操作。在该框架中，用户一共可以进行四种类型的操作：修改窗口的大小；修改当前时间（用于动画）；
+通过鼠标拖拽修改相机位置；通过表项修改场景属性（或渲染属性）。
+关于修改窗口大小、修改时间的操作，只需要直接调用之前介绍的方法即可完成。
+其余两种操作则在实现上更为复杂。
+
+首先说如何修改相机位置。当ImGui检测到鼠标事件后，后台需要根据事件的具体情况来计算出新的相机位置，然后将其输入到OpTiX中。
+可以发现，CameraPropertyManager类正好适合于完成这样的工作。因此，在该类中又增加了一个新的接口函数：
+
+TODO：看看这里接口对不对
+\lstset{language=C++}
+\begin{lstlisting}
+void processMouse(float, float, bool, bool, bool, float);
+\end{lstlisting}
+
+该函数的参数均为描述鼠标事件的变量。在计算完新的相机信息后，它只需直接调用changePropertyBuffer函数便完成了对OpTiX的输入。
+
+其次来说场景属性的修改。对于这一部分来说，主要的问题是如何为不同的属性设置表项。
+这里采用的方法是：通过递归算法遍历场景中每个属性对应的实体对象，然后由这些对象自行向ImGui提出所需的表项格式。
+为此，之前提到的所有类（Geometry、Property、PropertyManager、Scene、Renderer、PostProcessor）都需要再添加一个接口函数：
+\lstset{language=C++}
+\begin{lstlisting}
+virtual bool displayGuiTab() 
+\end{lstlisting}
+
+该函数会在其内部调用ImGui的方法，而后者则会对这些调用统一进行记录。最终，ImGui会将所有被记录的表项都显示在屏幕上。
+函数需要返回一个Bool值，表示该表项是否被修改过，以决定是否要对OpTiX上的数据进行更新。
+
+最后，下图展示了该框架下所有类型之间的关系：
+TODO：综合UML图

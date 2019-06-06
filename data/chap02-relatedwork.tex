@@ -16,7 +16,10 @@
 渲染技术有着完整而牢固的理论基础。
 由David Immel等人\cite{RenderingEquation1}，以及James Kajiya\cite{RenderingEquation2}在1986年同时提出的渲染方程，被认为是最著名的渲染理论之一:
 该方程利用物理方法近似描述了在几何光学模型中（不考虑光的波长效应）光照辐射度的传输形式，成为了后来大量渲染算法的理论来源。
-在1992年Alan Watt等人的工作\cite{Fredholm}中，进一步得出渲染方程是Fredholm积分中的第二类积分。
+\begin{equation}
+L_o(\mathbf{x}, \omega_o)=L_e(\mathbf{x},\omega_o)+\int_{\Omega} f(\mathbf{x}, \omega_i, \omega_o) L_i(\mathbf{x}, \omega_i) (\omega_i \cdot \mathbf{n}) \operatorname d\omega_i
+\end{equation}
+1992年Alan Watt等人的工作\cite{Fredholm}，进一步得出渲染方程是Fredholm积分中的第二类积分。
 除此之外，针对不同种类的渲染需求，许多相对应的理论也先后被提出，
 如James Kajiya等人在1984年提出过体渲染方程\cite{VolumnRenderingEquation}，为传输介质非真空情况下的体渲染提供了支持；
 Adam M Smith等人提出的短暂渲染方程\cite{TransientEquation}，用于通过渲染生成Time-Of-Flight数据的计算等等。
@@ -57,7 +60,7 @@ Adam M Smith等人提出的短暂渲染方程\cite{TransientEquation}，用于�
 
 路径追踪算法尽管获得足够精确的计算结果，却在收敛速度上较为缓慢。
 为了提升收敛速度，有许多针对路径追踪的优化算法被提出。其中，
-一部分算法试图从采样方式上进行优化，如Veach and J.Guibas于1995提出的符合重要性采样\cite{MultipleImportanceSampling}算法，
+一部分算法试图从采样方式上进行优化，如Veach and J.Guibas于1995提出的复合重要性采样\cite{MultipleImportanceSampling}算法，
 通过从多个不同的分布进行联合采样的策略，来减小一些场景的误差（效果可见下图）；
 William J. Morokoff等人在1995年提出拟蒙特卡洛积分法\cite{QuasiMonteCarlo}，
 通过将利用确定性方法生成的序列代替随机数提高收敛速度，这一思路同样被运用到了路径追踪算法中；
