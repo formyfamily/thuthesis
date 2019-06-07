@@ -105,7 +105,7 @@ w_r = c_rF_r(\omega_o) ; \quad w_t = c_t(1-w_r) ; \quad w_d = c_d(1-w_r-w_t).
 然后将三份结果进行累加便可以得到最终的输出值了。
 
 \subsection{采样函数}
-
+\label{VRaySample}
 首先来看各层的采样方式：对于漫反射层，我们可以直接在半球面上进行均匀采样；
 而对于反射层、折射层，则可以参考GGX模型中的做法，利用$D$函数进行采样。
 
@@ -114,12 +114,26 @@ VRayMtl模拟模型由以上三层混合而成，其采样过程分为两步：�
 \begin{equation}
 p(\omega_o) = P(\text{reflect})p_r(\omega_o)+P(\text{refract})p_t(\omega_o)+P(\text{diffuse})p_d(\omega_o);
 \end{equation}
-
 各层被选中的概率则和上一章中的权重直接相关：
 \begin{equation}
     P(\text{reflect}) = |w_r|; \quad P(\text{refract}) = |w_t|; \quad P(\text{diffuse}) = 1-|w_r|-|w_t|.
 \end{equation}
     
-
 \section{VRayMtl2Side材质}
+
+VRayMtl2Side材质是通过两种VRay材质组合而成的，这两个材质分别分布在物体的正反两面上。
+该材质提供了一个透明度参数$tr$，通过该参数对两种材质进行叠加。
+
+根据实际运行的情况，本人将这种材质的BSDF模拟函数定义为：
+\begin{equation}
+    f(\omega_i, \omega_o) = 
+    \begin{cases}
+    (1-tr)\cdot f_{front}(\omega_i, \omega_o)+tr\cdot f_{back}(-\omega_i, -\omega_o)& \omega_o \cdot \textbf{n} > 0\\
+    tr\cdot f_{front}(\omega_i, \omega_o)+(1-tr)\cdot f_{back}(-\omega_i, -\omega_o)& \omega_o \cdot \textbf{n} < 0\\
+    \end{cases}
+\end{equation}
+其中$f_{front},f_{back}$分别代表正反面两种材质的BSDF函数。其采样和概率密度函数的计算和\ref{VRaySample}小节中的过程类似。
+
+在程序实现中，VRayMtl2Side材质的MaterialProperty包含两种下属材质的ID以及透明度参数。
+在它的计算函数中，首先会根据ID找到下属材质的MaterialProperty，然后再调用它们的计算函数从而求得结果。
 

@@ -163,24 +163,24 @@ $\beta$是一个固定参数，一般设为2。利用这个方法，路径追踪
 
 SPPM算法是一个渐进算法，因此需要进行多轮运算才能达到收敛。
 每一轮的运算又具体分为三步：
-第一步被称为光子生成（Photon Pass），由光源生成大量光子，并进行追踪直到达到一定层数为止；
+第一步被称为光子通道（Photon Pass），由光源生成大量光子，并进行追踪直到达到一定层数为止；
 第二步将场景中的光子储存在一个按空间划分的数据结构中（例如KD树），该结构则被称为光子图（Photon Map）；
-最后一步为光子聚集（Gather Pass），即通过路径追踪算法进行渲染，并在光线遇到漫反射材质时，根据相交点周围的光子计算间接光照。
+最后一步为聚集通道（Gather Pass），即通过路径追踪算法进行渲染，并在光线遇到漫反射材质时，根据相交点周围的光子计算间接光照。
 由于第一、三步需要光线追踪功能，因此在本框架中由OpTiX完成；第二步则通过Host程序完成。
 
-\subsection{光子生成}
+\subsection{光子通道}
 
-有了之前的基础，实现光子生成这一步只需要再设计一个Ray Generation程序即可。
+有了之前的基础，实现光子通道这一步只需要再设计一个Ray Generation程序即可。
 同时，还要在LightProperty中加入两个计算函数LightDirSample及LightDirPdf，
 从而支持对出射光线进行方向上的采样。
 
-关于光子生成的流程见算法\ref{RGPPPass}。这里需要解释一下$\beta'$的作用：
+关于光子通道的流程见算法\ref{RGPPPass}。这里需要解释一下$\beta'$的作用：
 由于保存的光子信息不包含最后一次采样的结果，因此计算光子能量时需要使用到上一轮迭代生成的$\beta$值。
 
 \begin{algorithm}
     \SetKwInOut{KIN}{输入}
     \SetKwInOut{KDATA}{输出}
-    \caption{光子生成Ray Generation Program}
+    \caption{光子通道Ray Generation Program}
     \label{RGPPPass}
     \KIN{索引$index_{x,y}$}
     \KDATA{光子数组${\rm pmap}$}
@@ -206,13 +206,13 @@ SPPM算法是一个渐进算法，因此需要进行多轮运算才能达到收�
 \end{algorithm}
 
 \subsection{维护光子图}
-上一步(光子生成）的输出实际是一个由诸多光子信息组成的数组，接下来则是要将这些光子组织成KD树的结构。
+上一步(光子通道）的输出实际是一个由诸多光子信息组成的数组，接下来则是要将这些光子组织成KD树的结构。
 由于这部分内容完全是由Host程序实现，且KD树的搭建属于经典算法，因此这里不再对算法流程进行介绍。
 
 唯一要进行说明的是，这步最终得到的光子图是一个通过单一数组表示的二叉树，
 这样的结构有便于后续的GPU程序进行查找。
 
-\subsection{聚集算法}
+\subsection{聚集通道}
 
 SPPM算法的聚集部分可以概括为以下几个公式：
 \begin{align}
@@ -223,7 +223,7 @@ SPPM算法的聚集部分可以概括为以下几个公式：
     L_i &= \frac{\tau_i}{N_{sum}\cdot \pi r_i^2}  
 \end{align}
 其中$r_i$代表搜索半径，$N_i$和$N_{sum}$分别代表总共找到及总共发出的光子数，
-$M_i$代表本轮迭代在半径$r_i$中搜索到的光子总数，$\tau_i$代表所有光子带来的光照值总和，
+$M_i$代表本轮迭代在半径$r_i$中搜索到的光子总数，$\tau_i$代表所有光子带来的光通量总和，
 而$L_i$代表最终求得的间接光照强度。
 
 这一部分的实现则基于对\ref{cha:pathtrace}中的两个程序的修改。
@@ -234,10 +234,10 @@ $M_i$代表本轮迭代在半径$r_i$中搜索到的光子总数，$\tau_i$代�
     \SetKwInOut{KIN}{输入}
     \SetKwInOut{KDATA}{数据}
     \SetKwInOut{KOUT}{输出}
-    \caption{聚集算法Ray Generation Program}
+    \caption{聚集通道Ray Generation Program}
     \label{RGPGather}
     \KIN{索引$index_{x,y}$，已发射的光子总数$N_{sum}$}
-    \KDATA{累计平均光照亮度$L_{acc}$，总采样数$S$，搜索半径$r_i$，收到光子数$N_i$，光子光照强度$\tau_i$}
+    \KDATA{累计平均光照亮度$L_{acc}$，总采样数$S$，搜索半径$r_i$，收到光子数$N_i$，光子光通量总和$\tau_i$}
     \KOUT{光照亮度$L_{out}$}
     生成初始光线$(\textbf{x}, \omega_o)$，设定初始值$\beta,L_o,d$；\\
     $\beta' \leftarrow 1$；\\
@@ -281,6 +281,8 @@ $M_i$代表本轮迭代在半径$r_i$中搜索到的光子总数，$\tau_i$代�
 因此还需要修改Renderer使其输出些数据。
 
 \subsection{基于方差估计的自适应渲染算法}
+
+\label{adaptive}
 
 该算法源自于2009年Holger Dammertz等人的工作\cite{AdaptiveSampling}，主要作用与路径追踪算法上。
 大致来说，在每一轮路径追踪结束后，
