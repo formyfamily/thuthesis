@@ -14,26 +14,26 @@
   %=========
   % 中文信息
   %=========
-  ctitle={基于GPU的实验室渲染平台},
+  ctitle={基于GPU的实时光线追踪渲染平台},
   cdegree={工学学士},
   cdepartment={计算机科学与技术系},
   cmajor={计算机科学与技术},
   cauthor={匡正非},
-  csupervisor={徐昆教授},
+  csupervisor={徐昆副教授},
   cassosupervisor={}, % 副指导老师
   ccosupervisor={}, % 联合指导老师
   % 日期自动使用当前时间，若需指定按如下方式修改：
   % cdate={超新星纪元},
   %
   % 博士后专有部分
-  catalognumber     = {分类号},  % 可以留空
-  udc               = {UDC},  % 可以留空
-  id                = {编号},  % 可以留空： id={},
-  cfirstdiscipline  = {计算机科学与技术},  % 流动站（一级学科）名称
-  cseconddiscipline = {系统结构},  % 专 业（二级学科）名称
-  postdoctordate    = {2009 年 7 月——2011 年 7 月},  % 工作完成日期
-  postdocstartdate  = {2009 年 7 月 1 日},  % 研究工作起始时间
-  postdocenddate    = {2011 年 7 月 1 日},  % 研究工作期满时间
+  % catalognumber     = {分类号},  % 可以留空
+  % udc               = {UDC},  % 可以留空
+  % id                = {编号},  % 可以留空： id={},
+  % cfirstdiscipline  = {计算机科学与技术},  % 流动站（一级学科）名称
+  % cseconddiscipline = {系统结构},  % 专 业（二级学科）名称
+  % postdoctordate    = {2009 年 7 月——2011 年 7 月},  % 工作完成日期
+  % postdocstartdate  = {2009 年 7 月 1 日},  % 研究工作起始时间
+  % postdocenddate    = {2011 年 7 月 1 日},  % 研究工作期满时间
   %
   %=========
   % 英文信息
@@ -72,14 +72,15 @@
   利用计算机进行真实化绘制（也称渲染）长期以来一直是计算机图形学领域中的核心技术，在娱乐、医疗、交通等多个行业中都扮演着极为重要的角色。
   图形处理器（GPU）最初是为加速基于光栅化的渲染而产生的硬件，而随着近年来其计算能力的逐步提高，也逐渐被用于基于光线追踪的渲染当中。
 
-  本文通过已有的GPU光线追踪库OpTiX，设计了一套高效、可复用、扩展性强的GPU渲染架构，并将其与传统CPU渲染器进行对照实验。
-  此外，利用此架构搭建的平台，本文进一步对基于机器学习的渲染优化算法，及VRay Material展开了研究。
+  本文通过已有的GPU光线追踪库OpTiX，设计了一套高效、可复用、扩展性强的GPU渲染架构。
+  利用此架构搭建的平台，本文进一步将一些主流的渲染算法、渲染优化算法、
+  以及时下热门的VRay材质移植至GPU下，并对最终的实现效果进行了一些测试。
 
   本文的创新点主要有：
   \begin{itemize}
     \item 设计了一套完整的GPU渲染平台框架；
-    \item 在该框架下实现了多个主流渲染算法及优化算法的GPU版本；
-    \item 在该框架下模拟了当前最先进的渲染材质之一：VRay Material。
+    \item 设计了多个主流渲染算法及优化算法的GPU版本；
+    \item 研究并模拟了当前最先进的渲染材质之一：VRay Material。
   \end{itemize}
 
 \end{cabstract}
@@ -88,10 +89,20 @@
 % \ckeywords{\TeX, \LaTeX, CJK, 模板, 论文}
 
 \begin{eabstract}
-   Drawing realistic images from geometric models with computer (i.e. Rendering) has been one of the most essential technology in Computer Graphics for a long period, 
-   playing important roles in multiple industries including entertainment, medication and transportation, etc.
-   A main issue of rendering that (---) most is how to facilitate the rendering process, reaching accurate results with an affordable time cost. 
-   Graphics Processing Unit (i.e. GPU), 
+
+  The use of computers for realistic rendering (also known as rendering) has long been a core technology in the field of computer graphics, playing an extremely important role in many industries such as entertainment, medicine, and transportation.
+  The graphics processing unit (GPU) was originally developed to accelerate raster-based rendering, and with the increase in it's power in recent years, it has gradually been used in ray-tracing-based rendering too.
+
+  This paper designs an efficient, reusable and extensible GPU rendering framework through the existing GPU ray tracing library OpTiX.
+  Using the program built with this framework, this article will further port some mainstream rendering algorithms, rendering optimization algorithms,
+  and the VRay materials to the GPU, and test the results of implementation by several evaluations.
+
+  The main innovations of this paper are:
+  \begin{itemize}
+    \item Designed a complete GPU rendering platform framework;
+    \item Designed GPU versions of multiple mainstream rendering algorithms and optimization algorithms;
+    \item Simulated one of the most advanced rendering materials available today: VRay Material.
+  \end{itemize} 
 \end{eabstract}
 
 % \ekeywords{\TeX, \LaTeX, CJK, template, thesis}
