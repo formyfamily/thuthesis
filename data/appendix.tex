@@ -3,6 +3,624 @@
 
 \title{OptiX: A General Purpose Ray Tracing Engine}
 
-\chapter{外文资料的调研阅读报告或书面翻译}
+\section{Programmable Ray Tracing Pipeline}
+
+The core idea of the OptiX engine is that most ray tracing algorithms can be implemented using a small set of programmable operations. This is a direct analog to the programmable rasterization pipelines employed by OpenGL and Direct3D. At a high level,
+those systems expose an abstract rasterizer containing lightweight
+callbacks for vertex shading, geometry processing, tessellation, and
+fragment shading operations. An ensemble of these program types,
+typically used in multiple passes, can be used to implement a broad
+variety of rasterization-based algorithms.
+
+We have identified a corresponding abstract ray tracing execution model along with lightweight operations that can be customized to implement a wide variety of ray tracing-based algorithms. [NVIDIA 2010a]. These operations, or programs, can be
+combined with a user-defined data structure (payload) associated
+with each ray. The ensemble of programs conspire to implement a
+particular client application’s algorithm.
+
+\subsection{Programs}
+
+There are seven different types of programs in OptiX, each of which
+operates on a single ray at a time. In addition, a bounding box program operates on geometry to determine primitive bounds for acceleration structure construction. The combination of user programs
+and hardcoded OptiX kernel code forms the ray tracing pipeline,
+which is outlined in Figure 2. Unlike a feed-forward rasterization
+pipeline, it is more natural to think of the ray tracing pipeline as a
+call graph. The core operation, rtTrace, alternates between locating an intersection (Traverse) and responding to that intersection
+(Shade). By reading and writing data in user-defined ray payloads
+and in global device memory arrays (buffers, see section 3.5), these
+operations are combined to perform arbitrary computation during
+ray tracing.
+
+Ray generation programs are the entry into the ray tracing pipeline.
+A single invocation of rtContextLaunch will create many instantiations of these programs. In the example in Figure 3, a ray generation program will create a ray using a pinhole camera model for
+a single pixel, start a trace operation, and store the resulting color
+in an output buffer. With this mechanism, one can also perform
+other operations such as creating photon maps, computing baked
+lighting, processing ray requests passed from OpenGL, shooting
+multiple rays for super-sampling, or implementing different camera models.
+
+Intersection programs implement ray-geometry intersection tests.
+As the acceleration structures are traversed, the system will invoke
+an intersection program to perform the geometric query. The program determines if and where the ray touches the object and may
+compute normals, texture coordinates, or other attributes based on
+the hit position. An arbitrary number of attributes may be associated with each intersection. Intersection programs enable support for arbitrary surfaces such as spheres, cylinders, high-order
+surfaces, or even fractal geometries like the Julia set in Figure 1.
+However, even in a triangle-only system, one may encounter a wide
+variety of mesh representations. A programmable intersection operation facilitates direct access to the native format, which can help
+avoid copies when interoperating with rasterization-based systems.
+
+Bounding box programs compute the bounds associated with each
+primitive to enable acceleration structures over arbitrary geometry.
+Given a primitive index, a simple program of this type may, for
+example, read vertex data from a buffer and compute a triangle’s
+bounding box. Procedural geometry can sometimes only estimate
+the bounds of a primitive. Such estimates are allowed as long as
+they are conservative, but loose bounds may degrade performance.
+
+Closest hit programs are invoked once traversal has found the closest intersection of a ray with the scene geometry. This program
+type closely resembles surface shaders in classical rendering systems. Typically, a closest hit program will perform computations
+like shading, potentially casting new rays in the process, and store
+result data in the ray payload.
+
+Any hit programs are called during traversal for every ray-object
+intersection that is found. The any hit program allows the material to participate in object intersection decisions while keeping the shading operations separate from the geometry operations. It may optionally terminate the ray using the built-in function rtTerminateRay, which will stop all traversal and unwind the
+call stack to the most recent invocation of rtTrace. This is a
+lightweight exception mechanism that can be used to implement
+early ray termination for shadow rays and ambient occlusion. Alternatively, the any hit program may ignore the intersection using rtIgnoreIntersection, allowing traversal to continue looking for
+other geometric objects. An intersection may be ignored, for instance, 
+based on a texture channel lookup, 
+thus implementing efficient alpha-mapped transparency without restarting traversal. 
+Another use case for the any hit program can be found in Section 8.1,
+where the application performs visibility attenuation for partial
+shadows cast by glass objects. Note that intersections may be presented out of order. The default any hit program is a no-op, which
+is often the desired operation.
+
+Miss programs are executed when the ray does not intersect any
+geometry in the interval provided. They can be used to implement
+a background color or environment map lookup.
+
+Exception programs are executed when the system encounters an
+exceptional condition, e.g., when the recursion stack exceeds the
+amount of memory available for each thread, or when a buffer access index is out of range. OptiX also supports user-defined exceptions that can be thrown from any program. The exception program
+can react, for example, by printing diagnostic messages or visualizing the condition by writing special color values to an output pixel
+buffer.
+
+Selector visit programs expose programmability for coarse-level
+node graph traversal. For example, an application may choose to
+vary the level of geometric detail for parts of the scene on a perray basis. In this case, the visit program would examine the ray
+distance or a ray differential stored with the payload and make a
+traversal decision based on that data.
+
+\subsection{Scene representation}
+
+The OptiX engine employs a flexible structure for representing
+scene information and associated programmable operations, collected in a container object called the context. This representation is also the mechanism for binding programmable shaders to
+the object-specific data that they require. In conjunction with a
+special-purpose object model described in Section 3.3, a compact
+representation of scene data is achieved.
+
+\subsubsection{Hierarchy nodes}
+
+A scene is represented as a graph. This representation is very
+lightweight and controls the traversal of rays through the scene. It
+can also be used to implement instancing two-level hierarchies for
+animations of rigid objects, or other common scene structures. To
+support instancing and sharing of common data, the nodes can have
+multiple parents.
+
+Four main node types can be used to provide the scene representation using a directed graph. Any node can be used as the root of
+scene traversal. This allows, for example, different representations
+to be used for different ray types.
+
+Group nodes contain zero or more (but usually two or more) children of any node type. A group node has an acceleration structure
+associated with it and can be used to provide the top level of a twolevel traversal structure.
+
+Geometry Group nodes are the leaves of the graph and contain the
+primitive and material objects described below. This node type also
+has an acceleration structure associated with it. Any non-empty
+scene will contain at least one geometry group.
+
+Transform nodes have a single child of any node type, plus an associated 4×3 matrix that is used to perform an affine transformation
+of the underlying geometry.
+
+Selector nodes have zero or more children of any node type, plus a
+single visit program that is executed to select among the available
+children. Although not implemented in the current version of the
+OptiX libraries, the node graph can be cyclic if the selector node is
+used carefully to avoid infinite recursion.
+
+\subsubsection{Geometry and material objects}
+
+The bulk of the data is stored in the geometry nodes at the leaves of
+the graph. These contain objects that define geometry and shading
+operations. They may also have multiple parents, allowing material
+and geometry information to be shared at multiple points in the
+graph; for a complete example, see Figure 4.
+
+Geometry Instance objects bind a geometry object to a set of material objects. This is a common structure used by scene graphs to
+keep geometric and shading information orthogonal.
+
+Geometry objects contain a list of geometric primitives. Each geometry object is associated with a bounding box program and an
+intersection program, both of which are shared among the geometry object’s primitives.
+
+Material objects hold information about shading operations, including programs called for each intersection as they are discovered
+(any hit program) and for the intersection nearest to the origin of a
+given ray (closest hit program).
+
+\subsection{ Object and data model}
+
+OptiX employs a special-purpose object model designed to minimize the constant data used by the programmable operations. In
+contrast to an OpenGL system, where only a single combination
+of shaders is used at a time. However, ray tracing can randomly
+access object and material data. Therefore, instead of the uniform
+variables employed by OpenGL shading languages, OptiX allows
+any of the objects and nodes described above to carry an arbitrary
+set of variables expressed as a typed name-value pair called a variable. Variables are set by the client application and have read-only
+access during the execution of a trace. Variables can be of scalar or
+vector integer and floating point types (e.g., float3, int4) as well as
+user-defined structs and references to buffers and texture samplers.
+
+The inheritance mechanism for these variables is unique to OptiX.
+Instead of a class-based inheritance model with a single self or this
+pointer, the OptiX engine tracks the current geometry and material
+objects and the current traversal node. Variable values are inherited
+from the objects that are active at each point in the control flow. For
+example, an intersection program will inherit definitions from the
+geometry and geometry instance objects, in addition to global variables defined in the context. Conceptually, OptiX examines each
+of these objects for a matching name/value pair when a variable is
+accessed. This mechanism can be thought of as a generalization of
+nested scoping found in most programming languages. It can also
+be implemented quite efficiently in the just-in-time compiler.
+
+As an example of how this is useful, consider an array of light
+sources called lights. Typically, a user would define lights in the
+context, the global scope of OptiX. This makes this value available in all shaders in the entire scene. However, if the lights for
+a particular object need to be overridden, another variable of the
+same name can be created and attached to the geometry instance
+associated with that object. In this way, programs connected to that
+object would use the overridden value of lights rather than the value
+attached to the context. This is a powerful mechanism that can be
+used to minimize the scene data to enable high performance on architectures with minimal caches. The manner in which these cases
+are handled can vary dramatically from one renderer to another, so
+the OptiX engine provides the basic functionality to express any
+number of override rules efficiently.
+
+A special type of variable, tagged with the keyword attribute can be
+used to communicate information from the intersection program to
+the closest- and any-hit programs. These are analogous to OpenGL
+varying variables, and are used for communicating texture coordinates, normals and other shading information from the intersection
+programs to the shading programs. These variables have special semantics — they are written by the intersection program but only the
+values associated with the closest intersection are kept. This mechanism enables the intersection operation to be completely separate
+from the shading operations, enabling multiple simultaneous primitives and/or mesh storage formats while still supporting texturing,
+shading normals, and object curvatures for ray differentials. Attributes that are not used by any closest- or any-hit program can be
+elided by the OptiX compiler.
+
+\subsection{ Dynamic dispatch}
+
+To allow multiple ray-tracing operations to co-exist in a single execution, OptiX employs a user-defined ray type. A ray type is simply
+an index that selects a particular set of slots for any hit and closest
+hit programs to be executed when an intersection is found. This can
+be used, for example, to treat shadow rays separately from other
+rays.
+
+
+Similarly, multiple entry points in an OptiX context enable an efficient way to represent different passes over the same set of geometry. For example, a photon mapper may use one entry point to
+cast photons into the scene and a second entry point to cast viewing
+rays.
+
+\subsection{ Buffers and Textures}
+
+The key abstraction for bulk data storage is the multi-dimensional
+buffer object, which presents a 1-, 2- or 3-dimensional array of a
+fixed element size. A buffer is accessed through a C++ wrapper
+object in any of the programs. Buffers can be read-only, write-only
+or read-write and support atomic operations when supported by the
+hardware. A buffer is handle-based and does not expose raw pointers, thus enabling the OptiX runtime to relocate buffers for storage
+compaction, or for promotion to other memory spaces for performance. Buffers are typically used for output images, triangle data,
+light source lists, and other array-based data. Buffers are the sole
+means of outputing data from an OptiX program. In most applications, the ray generation program will be responsible for writing
+data to the output buffer, but any of the OptiX programs are allowed
+to write to output buffers at any location, but with no ordering guarantees.
+A buffer can also be bound to a texture sampler object, which will
+utilize the GPU texturing hardware. Buffers and texture sampler
+objects are bound to OptiX variables and utilize the same scoping
+mechanisms as shader values. Additionally, both buffers and texture samplers can interoperate with OpenGL and DirectX, enabling
+efficient implementation of hybrid rasterization/raytracing applications.
+
+\section{System Overview}
+
+The OptiX engine consists of two distinct APIs, one for host-side
+and one for device-side code.1 The host API is a set of C functions that the client application calls to create and configure a context, assemble a node graph, and launch ray tracing kernels. It also
+provides calls to manage devices used for kernel execution. The
+program API is the functionality exposed to user programs. This
+includes function calls for tracing rays, reporting intersections, and
+accessing data. In addition, several semantic variables encode state
+specific to ray tracing, e.g., the current distance to the closest intersection. Printing and exception handling facilities are also available
+for debugging.
+
+Figure 5 outlines the control flow of an OptiX application. During setup, the application calls OptiX host API functions to provide scene data data such as geometry, materials, acceleration structures, hierarchical relationships, and programs. A subsequent call
+to the rtContextLaunch API function passes control to OptiX, where
+changes in the context are processed. If required, a new ray tracing kernel is compiled from the given user programs. Acceleration
+structures are built (or updated) and data is synchronized between
+host and device memory. Finally, the ray tracing kernel is executed,
+invoking the various user programs as described in Section 3.
+
+After execution of the ray tracing kernel has finished, its result data
+can be used by the application. Typically, this involves reading
+from output buffers filled by one of the user programs or displaying
+such a buffer directly, e.g., via OpenGL. An interactive or multipass application then repeats the process starting at context setup,
+where arbitrary changes to the context can be made, and the kernel
+is launched again.
+
+\section{Acceleration Structures}
+
+The core algorithm for finding an intersection between a ray and
+the scene geometry involves the traversal of acceleration structures.
+Such data structures are a vital component of virtually every ray
+tracing system. They are usually spatial or object hierarchies and
+are used by the traversal algorithm to efficiently search for primitives that potentially intersect a given ray. OptiX offers a flexible
+interface, suitable for a wide range of applications, to control its
+acceleration structures.
+
+\subsection{Interaction with the node graph}
+
+One of the reasons for collecting geometry data in a node graph is to
+facilitate the organization of the associated acceleration structures.
+Instead of maintaining all scene geometry within a single acceleration structure, it often makes sense to build several structures over
+different regions of the scene. For example, parts of the scene may
+be animated, requiring an acceleration structure to be rebuilt for every ray tracing pass. In this case, creating a separate structure for
+the static regions of the scene can increase efficiency. In addition
+to only constructing the static structure once, the application can
+typically invest a larger time budget into a higher quality build.
+
+The OptiX engine associates acceleration structures with all groups
+and geometry groups in the node graph. Structures attached to geometry groups are low level, built over the geometric primitives the
+geometry group contains. Structures on groups are built over the
+bounds of the children of that group and thus represent high level
+acceleration structures. These high level structures are useful to express hierarchical relationships between geometry that is modified
+at different rates.
+
+Instancing. An important design goal for the acceleration structure system was support for flexible instancing. Here, instancing
+refers to low-overhead replication of scene geometry by referencing
+the same data more than once, without having to copy heavyweight
+data structures. As described in Section 3.2.1, nodes in the graph
+can be referenced multiple times, which naturally implements instancing. It is desirable to not only share geometry information
+among instances, but acceleration structures as well. At the same
+time, it should be possible to assign non-geometry data such as material programs and variables independently for each instance.
+
+We chose to expose acceleration structures as separate API objects
+that are attached to groups and geometry groups. In the instancing
+case, it is possible to attach a single acceleration structure to multiple nodes, thus sharing its data and avoiding redundant construction of the same data structure. The method also results in efficient
+addition and removal of instances at runtime. Figure 6 shows an
+example of a node graph with instancing.
+
+Acceleration structures on combined geometry. Dividing the
+scene into multiple acceleration structures reduces structure build
+time but also reduces ray traversal performance. In the limiting
+case of an entirely static scene, one would typically choose a single
+acceleration structure. One idea behind acceleration structures on
+geometry groups is to facilitate the application’s data management
+for that type of setup: instead of having to merge individual geometric objects into a monolithic chunk, they can stay organized as
+separate geometries and instances, and easily be collected within
+a single geometry group. The corresponding acceleration structure
+will be built over the individual primitives of any geometric objects,
+resulting in maximum efficiency as if all the geometry were combined. The OptiX engine will internally take care of the necessary
+bookkeeping tasks, such as correct remapping of material indices.
+
+A geometry group can also exploit certain per-object information
+when building its acceleration structure. For example, in a geometry group containing multiple objects, only a single one might have
+been modified between ray tracing passes. OptiX can take into account that information and omit some redundant operations (e.g.
+bounding box computations, see Section 5.3).
+
+\subsection{ Types of acceleration structures}
+
+Ray tracing acceleration structures are an active area of research.
+There is no single type that is optimal for all applications under all
+conditions. The typical tradeoff between the different variants is
+ray tracing performance versus construction speed, and each application has a different optimal balance. Therefore, OptiX provides a
+number of different acceleration structure types that the application
+can choose from. Each acceleration structure in the node graph can
+be of a different type, allowing combinations of high-quality static
+structures with dynamically updated ones. Most types are also suitable for high level structures, i.e. acceleration structures attached to
+groups.
+
+The currently implemented acceleration structures include algorithms focused on hierarchy quality (e.g. the SBVH [Stich et al.
+2009]), on construction speed (e.g. the LBVH [Lauterbach et al.
+2009]), and various balance levels in between.
+
+\subsection{Construction}
+
+Whenever the underlying geometry of an acceleration structure is
+changed, e.g. during an animation, it is explicitly marked for rebuild by the client application. OptiX then builds the so scheduled
+acceleration structures on the subsequent invocation of the rtContextLaunch API function.
+
+The first stage in acceleration structure construction acquires the
+bounding boxes of the referenced geometry. This is achieved by
+executing for each geometric primitive in an object the bounding
+box program described in Section 3.1, which is required to return
+a conservative axis-aligned bounding box for its input primitive.
+Using these bounding boxes as elementary primitives for the acceleration structures provides the necessary abstraction to trace rays
+against arbitrary user-defined geometry (including several types of
+geometry within a single structure). To obtain the necessary bounding boxes for higher level group nodes in the tree, the union of the
+primitive bounding boxes is formed and propagated recursively.
+
+The second construction stage consist of actually building the required acceleration structures given the obtained bounding boxes.
+The available host and device parallelism can be utilized in two
+ways. First, multiple acceleration structures in the node graph can
+be constructed in parallel, as they are independent. Second, a single
+acceleration structure build code can usually be parallelized (see
+e.g. [Shevtsov et al. 2007], [Zhou et al. 2008], [Lauterbach et al.
+2009]). The final acceleration structure data is placed in device
+memory for consumption by the ray traversal code.
+
+\subsection{Tuning}
+
+While acceleration structures in the OptiX engine are designed to
+perform well out of the box, it is sometimes necessary for the application to provide additional information to achieve the highest
+possible performance. The application can therefore set acceleration structure-specific properties that affect subsequent structure
+builds and ray traversals.
+
+One example for such a property is the “refit” flag: if the geometry
+used by a BVH acceleration structure has changed only slightly, it is
+often sufficient to simply refit the BVH’s internal bounding boxes
+instead of rebuilding the full structure from scratch (see [Lauterbach et al. 2006]). The client application can enable this behavior
+on certain types of acceleration structures if it assumes the resulting
+total runtime will decrease. Such decisions are left to the application, as it usually possesses contextual information that is unavailable to OptiX.
+
+Build procedures specialized to certain types of geometric primitives (as opposed to the axis-aligned bounding boxes discussed
+above) are a second case where properties are useful. The application may, for example, inform an SBVH acceleration structure
+that the underlying geometry consists exclusively of triangles, and
+where these triangles are located in memory. The SBVH can then
+perform a more exact method of constructing the hierarchy, which
+results in higher quality.
+
+\chapter{外文资料的书面翻译}
 
 \title{OpTiX：一款通用光线追踪引擎}
+
+\section{可编程光线追踪渲染系统}
+
+OptiX引擎的核心思想是大多数光线跟踪算法可以使用一小组可编程操作来实现。 
+这与OpenGL和Direct3D采用的可编程光栅化流水线直接相似。 在高层次上，
+这些系统公开了一个包含轻量级的抽象光栅化器回调用于顶点着色，几何处理，曲面细分和片段着色操作。 这些程序类型的集合，
+通常用于多次通过，可用于实现广泛的各种基于光栅化的算法。
+
+我们已经确定了相应的抽象光线跟踪执行模型以及可以定制的轻量级操作，以实现各种基于光线跟踪的算法。 [NVIDIA 2010a]。 这些操作或程序可以是
+与用户定义的数据结构（有效负载）相关联每一缕。 程序集合合谋实现一个特定客户端应用程序的算法。
+
+\subsection{程序}
+
+OptiX中有七种不同类型的程序，每种程序都有
+一次只能在一条光线上运行。此外，边界框程序对几何进行操作以确定加速结构构造的基本边界。用户程序的组合
+和硬编码的OptiX内核代码构成光线跟踪管道，如图2所示。与前馈光栅化不同
+在管道中，将光线跟踪管道视为一种更自然的方式调用图。核心操作rtTrace在定位交叉点（Traverse）和响应该交叉点之间交替
+（阴影）。通过在用户定义的射线有效负载中读取和写入数据在全局设备存储器阵列（缓冲器，参见第3.5节）中，这些
+组合操作以执行任意计算射线追踪。
+
+光线生成程序是光线跟踪管道的入口。
+单个调用rtContextLaunch将创建这些程序的许多实例。在图3的示例中，光线生成程序将使用针孔相机模型创建光线
+单个像素，启动跟踪操作，并存储生成的颜色在输出缓冲区中。通过这种机制，人们也可以执行
+其他操作，如创建光子贴图，计算烘焙照明，处理从OpenGL传递的射线请求，射击
+多个光线用于超级采样，或实现不同的相机模型。
+
+交叉点程序实现了光线几何相交测试。当遍历加速结构时，系统将调用
+用于执行几何查询的交叉程序。该程序确定光线是否以及在何处接触物体并且可以
+基于计算法线，纹理坐标或其他属性命中位置。任意数量的属性可以与每个交叉点相关联。交叉点程序支持任意表面，如球体，圆柱体，高阶
+表面，甚至是分形几何图形，如图1中的Julia所示。然而，即使在仅三角形系统中，也可能遇到宽范围
+各种网格表示。可编程交叉操作有助于直接访问本机格式，这可以提供帮助与基于光栅化的系统进行互操作时，请避免使用副本。
+
+边界框程序计算与每个边界相关的边界基元，以在任意几何体上启用加速结构。
+给定一个原始索引，这种类型的简单程序可以用于例如，从缓冲区读取顶点数据并计算三角形
+边界框。程序几何有时只能估计原语的界限。只要这样估计是允许的
+它们是保守的，但松散的边界可能会降低性能。
+
+一旦遍历找到光线与场景几何体的最近交点，就会调用最近的命中程序。这个计划
+类型与经典渲染系统中的表面着色器非常相似。通常，最接近的命中程序将执行计算
+像着色一样，可能在过程中投射新光线并存储
+光线有效载荷中的结果数据。
+
+在遍历每个光线对象时调用任何命中程序
+找到的交叉点。任何命中程序都允许材质参与对象交叉决策，同时使着色操作与几何操作分开。它可以选择使用内置函数rtTerminateRay终止光线，这将停止所有遍历和展开
+调用堆栈到最近的rtTrace调用。这是一个可用于实现的轻量级异常机制
+阴影射线和环境遮挡的早期射线终止。或者，任何命中程序可以使用rtIgnoreIntersection忽略交集，允许遍历继续查找
+其他几何对象。例如，可以忽略交叉点基于纹理通道查找，
+从而实现有效的alpha映射透明度，而无需重新启动遍历。
+任何命中程序的另一个用例可以在8.1节中找到，应用程序执行部分可见性衰减的位置
+由玻璃物体投射的阴影。请注意，交叉点可能无序呈现。默认的任何命中程序都是no-op，即通常是理想的操作。
+
+当光线不与任何光线相交时，执行Miss程序提供的间隔中的几何。它们可以用来实现背景颜色或环境地图查找。
+
+当系统遇到异常程序时执行异常程序异常条件，例如，当递归堆栈超过时
+每个线程可用的内存量，或缓冲区访问索引超出范围时的内存量。 OptiX还支持可以从任何程序抛出的用户定义的异常。例外程序
+例如，可以通过将特殊颜色值写入输出像素来打印诊断消息或可视化条件缓冲。
+选择器访问程序暴露了粗级的可编程性
+
+\subsection{场景表示}
+
+OptiX引擎采用灵活的结构进行表示
+场景信息和相关的可编程操作，收集在称为上下文的容器对象中。此表示也是将可编程着色器绑定到的机制
+他们需要的特定于对象的数据。与...结合第3.3节中描述的专用对象模型，一个紧凑型实现了场景数据的表示。
+
+\subsubsection{层次结构节点}
+
+场景表示为图形。这种表现非常好轻量级并控制穿过场景的光线遍历。它也可用于实现实例化的两级层次结构
+刚性对象或其他常见场景结构的动画。至支持实例化和共享公共数据，节点可以拥有多个父母。
+
+可以使用四种主要节点类型来使用有向图来提供场景表示。任何节点都可以用作根场景遍历。这允许例如不同的表示用于不同的射线类型。
+
+组节点包含任何节点类型的零个或多个（但通常是两个或更多个）子节点。组节点具有加速结构
+与之相关联，可用于提供两级遍历结构的顶层。
+
+几何组节点是图的叶子并包含原始和物质对象如下所述。此节点类型也是
+具有与之相关的加速结构。任何非空的场景将包含至少一个几何组。
+
+变换节点具有任何节点类型的单个子节点，以及用于执行仿射变换的关联4×3矩阵
+底层几何体。
+
+选择器节点具有零个或多个任何节点类型的子节点，加上a单个访问程序，执行以在可用中进行选择
+儿童。虽然没有在当前版本中实现OptiX库，如果选择器节点是，则节点图可以是循环的小心使用以避免无限递归。
+
+\subsubsection{几何和材料对象}
+
+大部分数据存储在叶子的几何节点中图表。它们包含定义几何和阴影的对象
+操作。他们也可能有多个父母，允许材料和要在多个点共享的几何信息图形;有关完整示例，请参见图4。
+
+几何实例对象将几何对象绑定到一组材质对象。这是场景图使用的常见结构
+保持几何和阴影信息正交。
+
+几何对象包含几何图元列表。每个几何对象都与一个边界框程序和一个
+交集程序，两者都在几何对象的基元之间共享。
+
+材质对象包含有关着色操作的信息，包括在发现每个交叉点时调用的程序
+（任何命中程序）和最接近a的原点的交点给出射线（最近的命中程序）。
+
+\subsection{对象和数据模型}
+
+OptiX采用专用对象模型，旨在最大限度地减少可编程操作使用的常量数据。在与OpenGL系统形成对比，只有一个组合
+一次使用着色器。但是，光线跟踪可以随机进行访问对象和材料数据。因此，而不是统一
+OptiX允许使用OpenGL着色语言使用的变量上面描述的任何对象和节点都带有任意的
+表示为称为变量的类型名称 - 值对的变量集。变量由客户端应用程序设置并具有只读权限
+在执行跟踪期间访问。变量可以是标量或矢量整数和浮点类型（例如，float3，int4）以及
+用户定义的结构和对缓冲区和纹理采样器的引用。
+
+这些变量的继承机制是OptiX独有的。而不是具有单个self或this的基于类的继承模型
+指针，OptiX引擎跟踪当前的几何和材料对象和当前遍历节点。变量值是继承的
+来自控制流中每个点处于活动状态的对象。对于例如，一个交集程序将继承来自的定义
+几何和几何实例对象，以及上下文中定义的全局变量。从概念上讲，OptiX会检查每个当变量为时，这些对象用于匹配的名称/值对
+访问。这种机制可以被认为是一种概括在大多数编程语言中都可以找到嵌套作用域。它也可以
+在即时编译器中非常有效地实现。
+
+作为一个如何有用的例子，考虑一个光阵列来源称为灯光。通常，用户会定义灯光
+上下文，OptiX的全球范围。这使得此值可用于整个场景中的所有着色器。但是，如果灯为
+需要覆盖一个特定的对象，另一个变量可以创建相同的名称并将其附加到几何实例
+与该对象相关联。通过这种方式，程序连接到那个对象将使用灯的重写值而不是值
+附在上下文中。这是一种强大的机制用于最小化场景数据，以便在具有最少缓存的体系结构上实现高性能。这些案件的方式
+处理可以从一个渲染器到另一个渲染器有很大的变化，所以OptiX引擎提供了表达任何内容的基本功能
+有效覆盖规则的数量。
+
+一个特殊类型的变量，用关键字属性标记即可用于将交叉路口程序中的信息传达给
+最近和任何打击的程序。这些类似于OpenGL变量变量，用于从交叉点传递纹理坐标，法线和其他阴影信息
+阴影程序的程序。这些变量具有特殊的语义 - 它们是由交集程序编写的，但只有保留与最近交点相关联的值。该机制使得交叉操作完全分离
+从着色操作，启用多个同步基元和/或网格存储格式，同时仍支持纹理，着色法线和光线差异的物体曲率。
+任何最近或任何命中程序都不使用的属性可以是由OptiX编译器删除。
+
+\subsection{动态调度}
+
+为了允许多次光线跟踪操作在单次执行中共存，OptiX采用用户定义的光线类型。光线类型很简单
+一个索引，为任何命中和最接近的选择一组特定的槽点击发现交叉点时要执行的程序。这个可以
+例如，用于将阴影射线与其他射线分开处理射线。
+
+类似地，OptiX上下文中的多个入口点可以有效地表示同一组几何体上的不同遍。例如，光子映射器可以使用一个入口点
+将光子投射到场景中以及投射观看的第二个入口点射线。
+
+\subsection{缓冲和纹理}
+
+批量数据存储的关键抽象是多维的缓冲对象，它呈现一个1维，2维或3维数组
+固定元素大小。通过C ++包装器访问缓冲区任何程序中的对象。缓冲区可以是只读的，只写的或支持读写并支持原子操作
+硬件。缓冲区是基于句柄的，不会公开原始指针，因此OptiX运行时可以重新定位缓冲区以进行存储
+压缩，或促进其他内存空间的性能。缓冲区通常用于输出图像，三角形数据，光源列表和其他基于阵列的数据。缓冲是唯一的
+从OptiX程序输出数据的方法。在大多数应用中，光线生成程序将负责编写
+数据到输出缓冲区，但允许任何OptiX程序在任何位置写入输出缓冲区，但没有排序保证。
+缓冲区也可以绑定到纹理采样器对象，这将是利用GPU纹理硬件。缓冲区和纹理采样器对象绑定到OptiX变量并使用相同的作用域
+机制作为着色器值。此外，缓冲区和纹理采样器都可以与OpenGL和DirectX互操作有效实现混合光栅化/光线跟踪应用。
+
+\section{系统概述}
+
+OptiX引擎由两个不同的API组成，一个用于主机端
+主机API是一组C函数，客户端应用程序调用这些函数来创建和配置上下文，组装节点图以及启动光线跟踪内核。它也是
+提供调用来管理用于内核执行的设备。该程序API是向用户程序公开的功能。这个
+包括用于跟踪光线的函数调用，报告交叉点和访问数据。此外，几个语义变量编码状态
+特定于光线跟踪，例如，到最近交叉点的当前距离。还提供印刷和异常处理设施用于调试。
+
+图5概述了OptiX应用程序的控制流程。在设置期间，应用程序调用OptiX主机API函数来提供场景数据数据，例如几何，材料，加速结构，层次关系和程序。随后的电话
+到rtContextLaunch API函数将控制传递给OptiX，其中处理上下文中的更改。如果需要，将从给定的用户程序编译新的光线跟踪内核。促进
+构建（或更新）结构并在其间同步数据主机和设备内存。最后，执行光线跟踪内核，调用第3节中描述的各种用户程序。
+
+执行光线跟踪内核完成后，其结果数据可以由应用程序使用。通常，这涉及阅读从一个用户程序填充的输出缓冲区或显示
+这样的缓冲区直接，例如，通过OpenGL。然后，交互式或多通道应用程序将重复从上下文设置开始的过程，
+可以对上下文进行任意更改，以及内核再次推出。
+
+\section{加速结构}
+
+寻找射线与射线交叉点的核心算法
+场景几何涉及加速结构的遍历。
+这种数据结构几乎是每条射线的重要组成部分
+追踪系统。它们通常是空间或对象层次结构
+遍历算法使用它来有效地搜索可能与给定光线相交的图元。 OptiX提供灵活性
+接口，适用于广泛的应用，来控制它
+加速结构。
+
+\subsection{与节点图的交互}
+
+在节点图中收集几何数据的原因之一是便于组织相关的加速结构。
+不是在单个加速结构中维护所有场景几何，而是通常构建多个结构是有意义的
+场景的不同区域。例如，场景的一部分可以
+动画，需要为每个光线追踪通道重建加速结构。在这种情况下，为其创建单独的结构
+场景的静态区域可以提高效率。此外为了只构造一次静态结构，应用程序可以通常将更大的时间预算投入到更高质量的构建中。
+
+OptiX引擎将加速结构与所有组相关联
+和节点图中的几何组。附加到几何图形组的结构是低级的，构建在几何图元上
+几何组包含。关于组的结构是建立在该群体的孩子的界限因此代表了高水平
+加速结构。这些高级结构可用于表示修改的几何体之间的层次关系以不同的速度。
+
+实例化。加速结构系统的一个重要设计目标是支持灵活的实例化。在这里，实例化
+指的是通过引用低开销复制场景几何相同的数据不止一次，而不必复制重量级
+数据结构。如第3.2.1节中所述，图中的节点可以多次引用，这自然会实现实例化。期望不仅共享几何信息
+在实例中，但加速结构也是如此。在同一个时间，应该可以为每个实例独立分配非几何数据，例如材料程序和变量。
+
+我们选择将加速结构公开为单独的API对象附加到组和几何组的。在实例中
+例如，可以将单个加速结构附加到多个节点，从而共享其数据并避免相同数据结构的冗余构造。该方法也有效
+在运行时添加和删除实例。图6显示了一个具有实例化的节点图的示例。
+
+组合几何上的加速结构。划分多个加速结构的场景减少了结构构建
+时间但也减少了光线穿越性能。在限制如果是完全静态的场景，通常会选择一个
+加速结构。加速结构背后的一个想法几何组是为了方便应用程序的数据管理
+对于那种类型的设置：它们可以保持井井有条，而不必将各个几何对象合并为一个整体块
+单独的几何和实例，很容易收集
+单个几何组。相应的加速结构将构建在任何几何对象的各个基元上，
+产生最大效率，好像所有几何结构一样。 OptiX引擎将在内部处理必要的工作簿记任务，例如正确重新映射材料指数。
+
+几何组还可以利用某些每对象信息在建立加速结构时。例如，在包含多个对象的几何组中，只有一个对象可能具有
+在光线追踪通道之间进行了修改。 OptiX可以考虑该信息并省略一些冗余操作（例如，边界框计算，见5.3节）。
+
+\subsection{加速结构的类型}
+
+光线跟踪加速结构是一个活跃的研究领域。没有一种类型对所有应用程序都是最佳的
+条件。不同变体之间的典型权衡是光线跟踪性能与构造速度，每个应用程序具有不同的最佳平衡。因此，OptiX提供了一个
+应用程序的不同加速结构类型的数量可以选择。节点图中的每个加速结构都可以
+是一种不同的类型，允许组合高品质的静电具有动态更新的结构。大多数类型也适用于高级结构，即连接到的加速结构组。
+
+当前实现的加速结构包括关注层级质量的算法（例如SBVH [Stich等人。2009]），
+关于施工速度（例如LBVH [Lauterbach et al。2009]），以及介于两者之间的各种平衡水平。
+
+\subsection{施工}
+
+每当加速结构的底层几何形状是
+变了，例如在动画期间，它被客户端应用程序显式标记为重建。 OptiX然后建立如此安排
+随后调用rtContextLaunch API函数的加速结构。
+
+加速结构施工的第一阶段获得了引用几何的边界框。这是通过
+为对象中的每个几何图元执行边界第3.1节中描述的盒子程序，需要返回一个保守的轴对齐边界框，用于输入图元。
+使用这些边界框作为加速结构的基本图元，为跟踪光线提供了必要的抽象
+反对任意用户定义的几何（包括几种类型的单个结构内的几何体）。为树中更高级别的组节点获取必要的边界框，结合
+原始边界框以递归方式形成和传播。
+
+第二个构造阶段包括在给定的边界框的情况下实际构建所需的加速结构。
+可用的主机和设备并行性可以在两个中使用方法。首先，节点图中的多个加速结构可以
+并行构建，因为它们是独立的。第二，单一加速结构构建代码通常可以并行化（参见
+例如[Shevtsov等人。 2007]，[周等人。 2008]，[劳特巴赫等人。2009]）。最终的加速结构数据放在设备中
+光线遍历代码消耗的内存。
+
+\subsection{调整}
+
+虽然OptiX引擎中的加速结构设计为
+开箱即用，有时需要应用程序提供额外的信息以达到最高
+可能的表现。因此，应用程序可以设置影响后续结构的加速结构特定属性
+构建和光线遍历。
+
+这种属性的一个例子是“refit”标志：如果是几何BVH加速结构使用的只是略有变化，它是
+通常足以简单地改装BVH的内部边界框而不是从头开始重建整个结构（参见[Lauterbach et al.2006]）。客户端应用程序可以启用此行为
+某些类型的加速结构，如果它假定结果总运行时间将减少。此类决策留给应用程序，因为它通常拥有OptiX无法使用的上下文信息。
+
+构建专门用于某些类型的几何图元的过程（与所讨论的轴对齐的边界框相反）以上）是属性有用的第二种情况。例如，该应用可以通知SBVH加速结构
+底层几何体仅由三角形组成，并且这些三角形位于内存中。那么SBVH就可以了
+执行更精确的构建层次结构的方法结果是更高的质量。
