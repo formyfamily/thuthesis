@@ -1,4 +1,4 @@
-\chapter{架构设计}
+\chapter{架构概述}
 \label{cha:pipeline}
 
 本章将主要对本人设计的GPU路径渲染平台的架构进行介绍。
@@ -172,8 +172,9 @@ Property类是在场景输入当中最为重要的一环，它所解决的问题
 这四者在结构上基本保持一致，它们又拥有着属于各自的子类。限于篇幅，有关这些不同Property的内部实现，这里便不再进行逐一介绍。
 
 最后需要提到的一点是，和\textbf{Geometry}不同，\textbf{Property}作为数据结构，需要直接出现在内核程序之中。
-然而，将这些textbf{Property}输入OpTiX的方法（比如说生成\textbf{Material}）却涉及到OpTiX的Host代码，因此不能被引入内核程序，这就引发了矛盾。
-为了解决这个问题，本人在此又加入了一个新的类\textbf{PropertyManager}，用来封装所有需要Host程序完成的工作。\textbf{PropertyManager}一共提供了三个函数接口：
+然而，将这些\textbf{Property}输入OpTiX的方法（比如说生成\textbf{Material}）却涉及到OpTiX的Host代码，因此不能被引入内核程序，这就引发了矛盾。
+为了解决这个问题，本人在此又加入了一个新的类\textbf{PropertyManager}，
+用来管理场景中所有的\textbf{Property}类，同时封装与\textbf{Property}相关的Host程序。\textbf{PropertyManager}一共提供了三个函数接口：
 
 \lstset{language=C++}
 \begin{lstlisting}
@@ -188,12 +189,37 @@ changePropertyBuffer函数会将指定下标的\textbf{Property}数据上传给\
 和\textbf{Property}一样，\textbf{PropertyManager}也有着相应的四个子类，这些子类之间有着更大的差异（如\textbf{LightPropertyManager}还会维护光源的\textbf{Geometry}列表）
 且都没有再被进一步继承下去。
 
-\subsection{动画——Animator（未实现）}
-TODO：动画
+\subsection{动画——Animator}
+
+\textbf{Animator}类的主要作用是记录场景内的所有属性随时间变化的情况。
+当系统给定一个时间值时，\textbf{Animator}的任务便是计算场景中各个属性在该时间下的值。
+
+问题的关键在于，如何能让不同种类的属性（\textbf{Geometry}和\textbf{Property}）都能拥有各自的动画属性。
+一种解决的思路是对于这些属性，都创建一个对应的\textbf{Animator}子类，
+然后通过这些子类的接口函数进行修改。
+然而这样的做法会让代码量变得十分巨大，而且不利于在将来进行拓展。
+本框架中采用的方法，则是将\textbf{Animator}的粒度缩小到了基本类型上（如int，float，float3等），
+而由不同的属性自己组装这些\textbf{Animator}从而实现动画。
+在代码实现上，只需要在\textbf{Geometry}和\textbf{Property}中
+加入一个由\textbf{Animator}指针组成的数组（每一个\textbf{Animator}都对应属性中的一个变量），
+再添加一个接口函数setTime来遍历这些\textbf{Animator}即可。
+\lstset{language=C++}
+\begin{lstlisting}
+bool setTime(float);
+\end{lstlisting}
+
+至于\textbf{Animator}类本身的情况，总体来说，它通过继承来实现不同的计算方式（线性差值、Bezier曲线等等），
+而通过模板方法实现对各种基本类型的支持。该类只需要提供一个接口函数：
+\lstset{language=C++}
+\begin{lstlisting}
+T getAnimationByTime<T>(float);
+\end{lstlisting}
+
+
 
 \subsection{场景——Scene}
 \textbf{Scene}类表示的是整个场景中的所有信息。从之前列举的场景内容来看，
-它需要包含一个\textbf{Geometry}组成的数组、四种不同的\textbf{PropertyManager}，和一个\textbf{Animator}。
+它需要包含一个\textbf{Geometry}组成的数组，和四种不同的\textbf{PropertyManager}。
 在功能上，它应当支持两个操作：从文件中读取数据，以及将数据放入到OpTiX的\textbf{Context}中。这两个操作对应的接口函数为：
 \lstset{language=C++}
 \begin{lstlisting}
@@ -216,7 +242,7 @@ TODO：\textbf{Renderer}的UML类图
 \lstset{language=C++}
 \begin{lstlisting}
 virtual void generateContext();
-virtual void uploadScene(Scene&);hou
+virtual void uploadScene(Scene&);
 virtual void resize(uint, uint);
 virtual void launch();
 \end{lstlisting}
@@ -298,7 +324,7 @@ void processMouse(float, float, bool, bool, bool, float);
 
 其次来说场景属性的修改。对于这一部分而言，最主要的问题是如何为不同类型的属性生成相应的表项。
 这里采用的方法是：通过递归算法遍历场景中每个属性对应的实例，然后由这些对象自行向ImGui提出所需的表项。
-为此，之前提到的所有类（\textbf{Geometry}、\textbf{roperty}、\textbf{PropertyManager}、\textbf{Scene}、\textbf{Renderer}、\textbf{PostProcessor}）都需要再添加一个接口函数：
+为此，之前提到的所有类（\textbf{Geometry}、\textbf{Property}、\textbf{PropertyManager}、\textbf{Scene}、\textbf{Renderer}、\textbf{PostProcessor}）都需要再添加一个接口函数：
 \lstset{language=C++}
 \begin{lstlisting}
 virtual bool displayGuiTab() 
