@@ -79,7 +79,7 @@
   本文的创新点主要有：
   \begin{itemize}
     \item 设计了一套完整的GPU渲染平台框架；
-    \item 设计了多个主流渲染算法及优化算法的GPU版本；
+    \item 将多个主流渲染算法及优化算法进行了GPU移植；
     \item 研究并模拟了当前最先进的渲染材质之一：VRay Material。
   \end{itemize}
 
@@ -91,16 +91,16 @@
 \begin{eabstract}
 
   The use of computers for realistic rendering (also known as rendering) has long been a core technology in the field of computer graphics, playing an extremely important role in many industries such as entertainment, medicine, and transportation.
-  The graphics processing unit (GPU) was originally developed to accelerate raster-based rendering, and with the increase in it's power in recent years, it has gradually been used in ray-tracing-based rendering too.
+  The graphics processing unit (GPU) was originally developed to accelerate rasterization-based rendering, and with the increase in it's power in recent years, it has gradually been used in ray-tracing-based rendering too.
 
-  This paper designs an efficient, reusable and extensible GPU rendering framework through the existing GPU ray tracing library OpTiX.
-  Using the program built with this framework, this article will further port some mainstream rendering algorithms, rendering optimization algorithms,
-  and the VRay materials to the GPU, and test the results of implementation by several evaluations.
+  In This paper, I will introduce an efficient, reusable and extensible GPU rendering framework based on the existing GPU ray tracing library OpTiX.
+  Further more, I will port some of the mainstream rendering algorithms with their optimizing methods,
+  and the VRay materials to the proposed framework, and test the performance of them by several evaluations.
 
   The main innovations of this paper are:
   \begin{itemize}
     \item Designed a complete GPU rendering platform framework;
-    \item Designed GPU versions of multiple mainstream rendering algorithms and optimization algorithms;
+    \item Designed GPU versions of multiple mainstream rendering algorithms and rendering optimization methods;
     \item Simulated one of the most advanced rendering materials available today: VRay Material.
   \end{itemize} 
 \end{eabstract}

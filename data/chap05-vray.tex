@@ -44,7 +44,7 @@ VRayMtl材质的反射层共拥有十余个参数，在本人的模拟中采用�
 反射层折射系数$\eta_{r}$（该系数仅仅用于计算菲涅尔系数，且通常与折射层的折射系数保持一致），
 以及最大反射深度$d_{maxr}$。
 
-反射层的BRDF直接采用了目前最先进的BRDF模型之一Microfacet GTR（又称GGX）模型\cite{GTR}，即：
+反射层的BRDF直接采用了目前最先进的BRDF模型之一GGX Microfacet模型\cite{Walter2007MicrofacetMF}\cite{GTR}，即：
 \begin{equation}
 f_r(\omega_o, \omega_i) = c_r \cdot \frac{D(\omega_h)G(\omega_i,\omega_o)F_r(\omega_i)}{4\cos\theta_o\cos\theta_i} 
 \end{equation}
@@ -71,7 +71,7 @@ $G$函数由于格式较为复杂，且不涉及到其他新的参数，所以�
 折射颜色$c_t$，折射光泽度$g_t$，
 折射系数$\eta$，以及最大折射深度$d_{maxt}$。
 
-折射层的BTDF函数同样采用的是基于Microfacet的BTDF\cite{MicrofacetBTDF}（见式\ref{VRayBTDF}），且$D$函数、$G$函数和反射层保持一致。
+折射层的BTDF函数同样采用的是基于Microfacet的BTDF\cite{Walter2007MicrofacetMF}（见式\ref{VRayBTDF}），且$D$函数、$G$函数和反射层保持一致。
 唯一不同的点在于，折射层中的粗糙度系数$\alpha=(1-g_t)$。
 \begin{equation}
     \label{VRayBTDF}
