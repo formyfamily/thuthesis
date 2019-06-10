@@ -47,7 +47,7 @@ Adam M Smith等人提出的短时渲染方程\cite{smith2008transient}，用于�
     \caption{利用递归式光线追踪算法生成的图像}
     \label{tab:rayTrace}
 \end{figure}
-
+ 
 递归式光线跟踪算法能够支持结构复杂的场景，但是仍然存在一点明显的不足：
 算法生成的光线与次级光线都有着确定的路径，这样可能会带来严重的锯齿问题，
 且无法实现软阴影、运动模糊等类似的“软”效果。
@@ -72,8 +72,9 @@ Adam M Smith等人提出的短时渲染方程\cite{smith2008transient}，用于�
 William J. Morokoff等人在1995年提出拟蒙特卡洛积分法\cite{Morokoff:1995:QCI:219503.219511}，
 利用固定的序列代替伪随机数从而减小估计值的方差，这一思路同样被运用到了路径追踪算法中；
 许多工作\cite{Belcour:2013:CTE:2487228.2487239}\cite{dammertz2010hierarchical}试图通过已有的渲染结果来选择接下来的采样密度分布，这些算法又被统称为适应性采样。
-另一方面，有的算法则直接对路径追踪生成的图片进行过滤，从而起到降噪效果，这其中的工作包含有：
-TODO：[Sen and Darabi, 2011], [Kalantari et al. 2015], [Rousselle et al. 2011]等等。
+另一方面，有的算法则直接对路径追踪生成的图片进行过滤，从而起到降噪效果。
+这其中有相当一部分的工作采用传统方法（例如高斯模糊、双边滤波器等）去除图像中的噪声\cite{Sen2012OnFT}\cite{Rousselle2011AdaptiveSA}，
+而近来的一些研究则考虑采用机器学习的方法实现这一目标。关于后者，将会在\ref{MLDenoiser}小节中进行进一步的介绍。
 
 相较于优化算法中的某些具体步骤，另一些工作则考虑如何对算法本身做出改进。
 Lafortune在1996年提出的双向路径追踪算法\cite{lafortune1993bi}便是典型的代表之一，
@@ -83,7 +84,7 @@ Lafortune在1996年提出的双向路径追踪算法\cite{lafortune1993bi}便是
 对于如何处理从光源发射的光线，和双向路径追踪算法不同的另一条思路是，
 将这些光线信息直接存储在场景的物体表面上，然后通过统计一定范围内的光线的数量，
 来获取表面上任意一点实际光照亮度的近似值。这类思路所主导的算法被称为光子映射算法，而上述的光线也被称为光子。
-光子映射算法最早出现在1993年(TODO：谁的工作？)，而在此之后又受到多次改良。
+光子映射算法最早在1995年被正式提出\cite{jensen1995photon}，而在此之后又受到多次改良。
 Toshiya Hachisuka等人于2008年提出了渐进式光子映射算法\cite{hachisuka2008progressive}，
 大大缩小了算法所需要的内存空间和运行时间复杂度；
 仅一年之后，Toshiya Hachisuka等人又发表了随机渐进式光子映射算法\cite{hachisuka2009stochastic}，
@@ -98,12 +99,6 @@ MLT算法、顶点连接与合并算法等等，这里就不一一进行介绍�
 按照严格定义，所谓光栅化其实是指是图形渲染管线中，将输入场景中的几何数据（又名顶点数据）转换为片元数据（从而对应到屏幕中的各个像素点）的过程。
 对于大多数采用管线的渲染算法而言，光栅化都是不可或缺的一个关键步骤，因此这一类渲染算法也被称之为光栅化渲染。
 
-TODO：算法理论
-%Siggraph 1985 - "Fast Spheres, Shadows, Textures, Transparencies, and Image Enhancements in Pixel-Planes," Henry Fuchs,et. al.
-%2000 Sig/Euro Workshop on Graphics Hardware - "Tiled Polygon Traversal Using Half-Plane Edge Functions," Joel McCormack, Robert McNamara
-%Siggraph 1988 - "A Parallel Algorithm for Polygon Rasterization,"  Juan Pineda
-%Siggraph 2005 - “Resolution-Independent Curve Rendering Using Programmable Graphics Hardware,” Charles Loop, Jim Blinn
-
 和光线追踪算法不同的一点是，光栅化渲染算法不仅仅针对三维场景的渲染，
 而同样可以用于二维场景、图形界面等其他需求，具有更加广泛的适应性。
 除此之外，光栅化渲染由于拥有通过固定的流水线完成并行计算，
@@ -114,8 +109,8 @@ TODO：算法理论
 这些技术普遍采用的思路是将复杂的光学方程进行拆分，
 把所求光照值分解成多个容易计算，或可以通过预处理得到的组成部分，再通过叠加形成最终的图像。
 
-这些技术中，有的着力于计算渲染中产生的阴影效果\cite{AO}，有的将重心放在全局光照的计算上\cite{GI}，
-有的则研究如何快速对体渲染中的效果进行近似\cite{Volume}等等。
+这些技术中，有的着力于计算渲染中产生的阴影效果，有的将中心放在间接光照计算上，
+有的则研究如何快速对体渲染中的效果进行近似等等。
 事实上，由于来自工业界（尤其是娱乐行业为首）的需求之庞大，
 基于光栅化的渲染技术（或者实时渲染技术）在很长时间来都属于相当热门的研究课题。
 正因如此，该技术的发展速度相当迅速，与之相关的工作浩如烟海，从而也出现了不少专门对相关算法进行整理介绍的书籍。
@@ -168,8 +163,8 @@ OpTiX的问世归功于不断走向成熟的通用图形处理器（GPGPU）。
 
 在此之后的时间内，利用GPU实现实时光线追踪的热度一路上涨，一些商用化的成果也慢慢呈现出来。
 NVIDIA公司在其GeForce RTX 20系列显卡中，加入了实时光线追踪功能\cite{RTXOn}；
-AMD公司同样在自家的Vega系列GPU上启用了该功能\cite{Vega}；
-越来越多的游戏诸如《战地5》，《我的世界》等，也已经开始实际应用起该项技术。
+AMD公司同样在自家的Vega系列GPU上启用了实时光线追踪\cite{Vega}；
+越来越多的游戏诸如《战地5》，《我的世界》等，也已经开始应用起该项技术。 
 
 \section{机器学习与渲染}
 
@@ -181,6 +176,7 @@ AMD公司同样在自家的Vega系列GPU上启用了该功能\cite{Vega}；
 
 \subsection{用于渲染的机器学习算法}
 
+\label{MLDenoiser}
 正如\ref{PathTracingOptimization}小节中所述，对于光线追踪的渲染优化往往从两个角度开展：
 对采样方式的优化，以及对渲染结果的后处理优化。
 在与机器学习相关的算法中，采样优化相关的工作相对较少，
