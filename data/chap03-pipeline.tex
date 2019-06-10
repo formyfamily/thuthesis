@@ -10,7 +10,7 @@
 
 OpTiX的本质是一个建立在通用并行语言CUDA上的光线追踪库。下面的这张流程图，直观地展示了其内部的工作原理：
 
-TODO: optix framework figure
+TODO: optix framework figure（直接拿上图）
 
 在上图中，黄色的方框代表需要用户自己编写的CUDA程序，蓝色和灰色的部分则由OpTiX实现。
 在用户通过调用rtContextLaunch开始渲染后，GPU便会启动其处理单元运行入口函数Ray Generation Program，同时向它们分配互不相同的索引编号。
@@ -59,7 +59,7 @@ Host程序需要将运行所需的所有数据、函数信息一并输入进该�
     \item{支持在线修改场景，并能够实现动画效果}
 \end{itemize}
 
-根据这些要求，本文在先后参考了PBRT\cite{PBRT}渲染器，及由Nvidia发布的OpTiX样例程序等多方材料后，
+根据这些要求，本文在先后参考了PBRT\cite{pharr2016physically}渲染器，及由Nvidia发布的OpTiX样例程序等多方材料后，
 最终设计了如下图所示的架构（包括控制流、数据流）：
 
 TODO: framework control / data flow figure
@@ -305,7 +305,7 @@ void run();
 然后将生成的\textbf{Scene}、\textbf{Renderer}等其他模块逐个输入进\textbf{GUI}中，
 最后调用run函数开始循环。
 
-\textbf{GUI}类的具体实现是基于Dear ImGui图形界面库\cite{Imgui}（以下称为ImGui）完成的。该界面库拥有扩展性强，简单轻便的特点，
+\textbf{GUI}类的具体实现是基于Dear ImGui图形界面库\footnote{https://github.com/ocornut/imgui}（以下称为ImGui）完成的。该界面库拥有扩展性强，简单轻便的特点，
 因此很方便用来实现用户的交互操作。在本人的设计框架中，用户一共可以进行四种类型的操作：修改窗口的大小；修改当前时间（用于动画）；
 通过鼠标拖拽修改相机位置；通过固定表项修改场景属性（或渲染属性）。
 关于修改窗口大小、修改时间的操作，只需要直接调用之前介绍的方法即可完成。

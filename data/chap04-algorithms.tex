@@ -219,7 +219,7 @@ SPPM算法是一个渐进算法，因此需要进行多轮运算才能达到收�
 
 \subsection{聚集通道}
 
-SPPM算法的聚集部分可以概括为以下几个公式\cite{StochasticProgressivePhotonMapping}：
+SPPM算法的聚集部分可以概括为以下几个公式\cite{hachisuka2009stochastic}：
 \begin{align}
     N_{i+1} &= N_{i}+\gamma M_i \label{SPPM1}\\
     r_{i+1} &= r_i\sqrt{\frac{N_{i+1}}{N_i+M_i}} \label{SPPM2}\\
@@ -277,7 +277,7 @@ $N_{sum}$代表总共发出的光子数，而$L_i$代表最终求得的间接光
 
 \subsection{基于深度学习的图像去噪}
 
-基于之前提到的工作\cite{NvidiaDenoiser}，新版的OpTiX库加入了深度学习的去噪功能，
+基于在\ref{AIDnoiser}小节中提到的深度学习去噪算法\cite{chaitanya2017interactive}，新版的OpTiX库加入了深度学习的去噪功能，
 本人则将其进一步封装成了一个\textbf{PostProcessor}类(名为\textbf{DLDenoiser})。
 由于该去噪功能对应的模块在设计上与OpTiX的光线渲染模块基本互相独立，且只要调用几个简单的API函数就可以使用，
 因此这里不再介绍其具体的使用流程。
@@ -288,7 +288,7 @@ $N_{sum}$代表总共发出的光子数，而$L_i$代表最终求得的间接光
 
 \label{adaptive}
 
-该算法源自于2009年Holger Dammertz等人的工作\cite{AdaptiveSampling}，主要作用与路径追踪算法上。
+该算法源自于2009年Holger Dammertz等人的工作\cite{dammertz2010hierarchical}，主要作用与路径追踪算法上。
 大致来说，该算法会将所有已有的渲染结果按照轮数的奇偶分成两部分，各自累加后求差，从而估计图像上各个像素点的亮度方差值。
 对于图像中的某一个像素块（这些块具体如何生成详见原文），如果其内部的像素方差平均值达到足够小，便在后续的渲染中不再对该块继续进行采样。
 

@@ -6,7 +6,7 @@
 这些函数的内部往往会有着极大的差异性，而它们的实现情况对渲染的整体效率、收敛速度以及最终结果都起着至关重要的效果。
 这一章将会对本渲染器中已经实现的其中一个材质——VRay模拟材质的具体实现情况进行介绍。
 
-VRay材质\cite{VRay}是目前渲染工业界最为著名的材质之一，它支持的功能十分广泛，
+VRay材质\footnote{https://docs.chaosgroup.com/display/VRAY3MAX/Materials}是目前渲染工业界最为著名的材质之一，它支持的功能十分广泛，
 渲染效果出众，被运用在诸多主流的渲染软件（如3ds Max、Maya等）上。
 严格意义上说，VRay材质实际上由二十多种不同的子材质组成，
 本渲染器只对其中的VRayMtl和VRayMtl2Sided两种子材质进行了模拟。
@@ -44,7 +44,7 @@ VRayMtl材质的反射层共拥有十余个参数，在本人的模拟中采用�
 反射层折射系数$\eta_{r}$（该系数仅仅用于计算菲涅尔系数，且通常与折射层的折射系数保持一致），
 以及最大反射深度$d_{maxr}$。
 
-反射层的BRDF直接采用了目前最先进的BRDF模型之一Microfacet GTR（又称GGX）模型\cite{GTR}，即：
+反射层的BRDF直接采用了目前最先进的BRDF模型之一GGX Microfacet模型\cite{Walter2007MicrofacetMF}\cite{GTR}，即：
 \begin{equation}
 f_r(\omega_o, \omega_i) = c_r \cdot \frac{D(\omega_h)G(\omega_i,\omega_o)F_r(\omega_i)}{4\cos\theta_o\cos\theta_i} 
 \end{equation}
@@ -71,7 +71,7 @@ $G$函数由于格式较为复杂，且不涉及到其他新的参数，所以�
 折射颜色$c_t$，折射光泽度$g_t$，
 折射系数$\eta$，以及最大折射深度$d_{maxt}$。
 
-折射层的BTDF函数同样采用的是基于Microfacet的BTDF\cite{MicrofacetBTDF}（见式\ref{VRayBTDF}），且$D$函数、$G$函数和反射层保持一致。
+折射层的BTDF函数同样采用的是基于Microfacet的BTDF\cite{Walter2007MicrofacetMF}（见式\ref{VRayBTDF}），且$D$函数、$G$函数和反射层保持一致。
 唯一不同的点在于，折射层中的粗糙度系数$\alpha=(1-g_t)$。
 \begin{equation}
     \label{VRayBTDF}
