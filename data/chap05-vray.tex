@@ -33,7 +33,7 @@ VRay材质\footnote{https://docs.chaosgroup.com/display/VRAY3MAX/Materials}是�
 \begin{equation}
 f_d(\omega_o, \omega_i) = \frac{0.5}{\pi} + 0.5C_{pb}\cdot c_{dif} \cdot \text{dot}(\omega_i, \omega_h)^{K_s(1-roughness)}
 \end{equation}
-其中$C_{pb}$为Phone-Blinn模型的归一化系数（该系数拥有解析解\cite{Phong}），$K_s$则为光泽度系数，在实验中被设置为(TODO：0.5)。
+其中$C_{pb}$为Phone-Blinn模型的归一化系数（该系数拥有解析解\cite{Phong}），$K_s$则为光泽度系数，在实验中被设置为0.8。
 可以看出，当$roughness=1$时（此时$C_{pb}=\frac{1}{\pi}$），该模型实际相当于Lambert漫反射模型。
 % http://www.farbrausch.de/~fg/articles/phong.pdf
 
